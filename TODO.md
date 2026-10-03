@@ -1,0 +1,3 @@
+- src/hooks/useFramework.ts: Framework.dispose() is a no-op, so the render loop cannot be stopped from this package.
+- src/components/AddFileButton.tsx: react-dropzone is a dependency, but files can only be added with the file picker.
+- src/store/TextureStore.ts: The GPU texture is disposed on remove; the source image and KTX2 container are not.

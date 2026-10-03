@@ -150,20 +150,25 @@ export default function ConvertDialog() {
             }
 
             const result = await convertToKtx2Async(framework, selectedTexture, convertParams);
-            if (result.success) {
-                const ktx = result.ktx!;
-                // Must create a copy since original might end up being transcoded internally.
-                const ktxCopy = ktx.createCopy();
+            if (!result.success || !result.ktx || !result.name) {
+                throw new Error("Conversion failed.");
+            }
+
+            const ktx = result.ktx;
+            // Must create a copy since original might end up being transcoded internally.
+            const ktxCopy = ktx.createCopy();
+            try {
                 const texContainer: ITexture2DContainer = {
-                    name: result.name!,
+                    name: result.name,
                     ktxContainer: ktx,
                     texture: framework.textureFactory.createFromKtx2(ktxCopy),
                     image: null,
                 };
                 await addTexture(texContainer);
-                ktxCopy.delete();
                 setOpen(false);
                 setConvertError(null);
+            } finally {
+                ktxCopy.delete();
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);

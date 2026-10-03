@@ -6,19 +6,14 @@ import {VkFormat} from "ris-ktx2-api";
 import {useViewerStore} from "./ViewerStore.ts";
 
 /**
- * Loaded textures, the current selection and its derived metrics / GPU format settings.
+ * Loaded textures and the current selection.
+ * Resolution, byte size, mip count, GPU format, and the mipmap checkbox are
+ * read from the selected texture at render time (see `textureDetails`).
  * The framework comes from ViewerStore.
  */
 interface TextureStore {
     textures: ITexture2DContainer[];
     selectedTexture: ITexture2DContainer | null;
-
-    // Derived from the selected texture.
-    textureFormat: TextureFormat;
-    generateMipmaps: boolean;
-    resolution: string;
-    size: string;
-    mipLevels: number;
 
     setSelectedTexture: (texture: ITexture2DContainer | null) => void;
     addTexture: (file: File | ITexture2DContainer) => Promise<void>;
@@ -28,24 +23,45 @@ interface TextureStore {
     canGenerateMipmaps: () => boolean;
 }
 
+/** Display values derived from a GPU texture. Not stored separately. */
+export interface TextureDetails {
+    textureFormat: TextureFormat;
+    generateMipmaps: boolean;
+    resolution: string;
+    size: string;
+    mipLevels: number;
+}
+
 const DEFAULT_USAGE = TextureUsage.TEXTURE_BINDING | TextureUsage.COPY_DST;
 
 function formatSizeMiB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toPrecision(3)} MiB`;
 }
 
-function metricsFromTexture(texture: ITexture2D | null | undefined) {
+export function textureDetails(texture: ITexture2D | null | undefined): TextureDetails {
     if (!texture) {
-        return {resolution: "0x0", size: "0 MiB", mipLevels: 0};
+        return {
+            textureFormat: TextureFormat.RGBA_8_UNORM,
+            generateMipmaps: false,
+            resolution: "0x0",
+            size: "0 MiB",
+            mipLevels: 0,
+        };
     }
 
     return {
+        textureFormat: texture.textureFormat,
+        generateMipmaps: texture.mipLevels > 1,
         resolution: `${texture.width}x${texture.height}`,
         size: formatSizeMiB(texture.size),
         mipLevels: texture.mipLevels,
     };
 }
 
+function mipmapsAllowed(container: ITexture2DContainer | null, textureFormat: TextureFormat): boolean {
+    const ktx = container?.ktxContainer;
+    return !ktx || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM;
+}
 
 function recreateTexture(
     framework: IFramework,
@@ -55,22 +71,21 @@ function recreateTexture(
 ): ITexture2D | null {
     const image = container.image;
     const ktx2 = container.ktxContainer;
-    let texture = null;
+    container.texture?.dispose();
 
-    if(ktx2) {
-        container.texture?.dispose();
+    if (ktx2) {
         const desc = new TextureDescriptor();
         desc.textureFormat = textureFormat;
         desc.generateMipmaps = generateMipmaps;
         // Always use copy to be able to change texture format.
         const copy = ktx2.createCopy();
-        texture = framework.textureFactory.createFromKtx2(copy, desc);
+        const texture = framework.textureFactory.createFromKtx2(copy, desc);
         copy.delete();
+        return texture;
     }
-    else if (image) {
-        container.texture?.dispose();
 
-        texture = framework.textureFactory.create(
+    if (image) {
+        return framework.textureFactory.create(
             image.baseWidth,
             image.baseHeight,
             image.getData(0),
@@ -81,62 +96,76 @@ function recreateTexture(
             generateMipmaps,
         );
     }
-    
-    container.texture = texture;
-    return texture;
+
+    return null;
 }
 
 const getFramework = () => useViewerStore.getState().framework;
 
+function resetMipLevel() {
+    useViewerStore.getState().setMipLevel(0);
+}
+
+function clampMipLevel(mipLevels: number) {
+    const levels = Math.max(mipLevels, 1);
+    if (useViewerStore.getState().mipLevel >= levels) {
+        resetMipLevel();
+    }
+}
+
 export const useTextureStore = create<TextureStore>((set, get) => {
-    const applySelection = (tex: ITexture2DContainer | null) => {
+    const selectTexture = (tex: ITexture2DContainer | null) => {
+        if (get().selectedTexture === tex) {
+            return;
+        }
+        set({selectedTexture: tex});
+        resetMipLevel();
+    };
+
+    const publishTexture = (previous: ITexture2DContainer, texture: ITexture2D | null) => {
+        const next: ITexture2DContainer = {...previous, texture};
+        const {textures, selectedTexture} = get();
         set({
-            selectedTexture: tex,
-            ...metricsFromTexture(tex?.texture),
-            textureFormat: tex?.texture?.textureFormat ?? get().textureFormat,
-            generateMipmaps: (tex?.texture?.mipLevels ?? 1) > 1,
+            textures: textures.map((item) => item === previous ? next : item),
+            selectedTexture: selectedTexture === previous ? next : selectedTexture,
         });
+        clampMipLevel(texture?.mipLevels ?? 1);
     };
 
     return {
         textures: [],
         selectedTexture: null,
 
-        textureFormat: TextureFormat.RGBA_8_UNORM,
-        generateMipmaps: false,
-        resolution: "0x0",
-        size: "0 MiB",
-        mipLevels: 1,
-
-        setSelectedTexture: (tex) => applySelection(tex),
+        setSelectedTexture: (tex) => selectTexture(tex),
 
         removeTexture: (texture) => {
             const {textures, selectedTexture} = get();
-            const nextTextures = textures.filter((t) => t !== texture);
+            const nextTextures = textures.filter((item) => item !== texture);
+            const removingSelection = selectedTexture === texture;
 
+            // TODO: The GPU texture is disposed here; the source image and KTX2 container are not.
             texture.texture?.dispose();
+            set({
+                textures: nextTextures,
+                ...(removingSelection ? {selectedTexture: nextTextures[0] ?? null} : {}),
+            });
 
-            set({textures: nextTextures});
-
-            if (selectedTexture === texture) {
-                applySelection(nextTextures[0] ?? null);
+            if (removingSelection) {
+                resetMipLevel();
             }
         },
 
         addTexture: async (file) => {
-
             const framework = getFramework();
 
-            if(!framework) {
+            if (!framework) {
                 // This should never happen
                 throw new Error("Framework has not been initialized");
             }
 
-            if(file instanceof File) {
-
-                if (get().textures.some((t) => t.name === file.name)) {
-                    console.warn(`Texture already added: ${file.name}`);
-                    return;
+            if (file instanceof File) {
+                if (get().textures.some((item) => item.name === file.name)) {
+                    throw new Error(`Texture already added: ${file.name}`);
                 }
 
                 let container: ITexture2DContainer;
@@ -175,48 +204,56 @@ export const useTextureStore = create<TextureStore>((set, get) => {
 
                 set((state) => ({
                     textures: [...state.textures, container],
-                    mipLevels: container.texture?.mipLevels ?? 1,
+                    selectedTexture: container,
                 }));
-                applySelection(container);
-            }
-            else {
+                resetMipLevel();
+            } else {
                 set((state) => ({
                     textures: [...state.textures, file],
-                    mipLevels: file.texture?.mipLevels ?? 1,
-                    format: file.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM,
+                    selectedTexture: file,
                 }));
-                applySelection(file);
+                resetMipLevel();
             }
         },
 
         setTextureFormat: (value) => {
             const framework = getFramework();
-            const {selectedTexture, generateMipmaps} = get();
-            if (!framework || !selectedTexture) {
+            const selected = get().selectedTexture;
+            if (!framework || !selected) {
                 return;
             }
 
-            set({textureFormat: value});
-            recreateTexture(framework, selectedTexture, value, generateMipmaps && get().canGenerateMipmaps());
-            applySelection(selectedTexture);
+            const generateMipmaps = (selected.texture?.mipLevels ?? 1) > 1;
+            const texture = recreateTexture(
+                framework,
+                selected,
+                value,
+                generateMipmaps && mipmapsAllowed(selected, value),
+            );
+            publishTexture(selected, texture);
         },
 
         setGenerateMipmaps: (value) => {
             const framework = getFramework();
-            const {selectedTexture, textureFormat} = get();
-            if (!framework || !selectedTexture) {
+            const selected = get().selectedTexture;
+            if (!framework || !selected) {
                 return;
             }
 
-            set({generateMipmaps: value});
-            recreateTexture(framework, selectedTexture, textureFormat, value && get().canGenerateMipmaps());
-            applySelection(selectedTexture);
+            const textureFormat = selected.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
+            const texture = recreateTexture(
+                framework,
+                selected,
+                textureFormat,
+                value && mipmapsAllowed(selected, textureFormat),
+            );
+            publishTexture(selected, texture);
         },
 
         canGenerateMipmaps: () => {
-            const ktx = get().selectedTexture?.ktxContainer;
-            const textureFormat = get().textureFormat;
-            return !ktx || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM;
-        }
+            const selected = get().selectedTexture;
+            const textureFormat = selected?.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
+            return mipmapsAllowed(selected, textureFormat);
+        },
     };
 });

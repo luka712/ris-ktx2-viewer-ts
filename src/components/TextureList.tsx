@@ -91,6 +91,7 @@ export default function TextureList() {
                 </Typography>
             ) : (
                 <SimpleTreeView
+                    aria-label="Loaded textures"
                     selectedItems={selectedItemId}
                     onSelectedItemsChange={handleSelectionChange}
                 >

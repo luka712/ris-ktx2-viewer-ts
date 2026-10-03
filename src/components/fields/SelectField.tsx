@@ -1,3 +1,4 @@
+import {useId} from "react";
 import {MenuItem, Select} from "@mui/material";
 import {FieldLayout, type FieldProps} from "./FieldLayout.tsx";
 
@@ -17,11 +18,14 @@ interface SelectFieldProps<T extends OptionValue> extends FieldProps {
 export function SelectField<T extends OptionValue>({
                                                        label, tooltip, row, value, options, onChange, valueTooltip,
                                                    }: SelectFieldProps<T>) {
+    const labelId = useId();
+
     return (
-        <FieldLayout label={label} tooltip={tooltip} row={row}>
+        <FieldLayout label={label} tooltip={tooltip} row={row} labelId={labelId}>
             <Select
                 value={value}
                 label={label}
+                labelId={labelId}
                 sx={{marginTop: 1, marginBottom: 1, height: "40px"}}
                 onChange={(e) => onChange(e.target.value as T)}
                 fullWidth

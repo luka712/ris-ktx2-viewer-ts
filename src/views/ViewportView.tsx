@@ -11,6 +11,7 @@ export function ViewportView() {
                 ref={canvasRef}
                 width={1920}
                 height={1080}
+                aria-label="Texture preview"
                 style={{maxWidth: '92%', maxHeight: '92%'}}
             />
         </Box>
