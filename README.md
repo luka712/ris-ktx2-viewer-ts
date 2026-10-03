@@ -1,75 +1,41 @@
-# React + TypeScript + Vite
+# ris-ktx2-viewer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Browser viewer for KTX2 textures. Load a PNG, JPEG, WebP, or KTX2 file, inspect its format and what this GPU supports, preview it in 2D or 3D, and convert an image to KTX2.
 
-Currently, two official plugins are available:
+## What it does
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Add one or more files from the Files tab. PNG, JPEG, and WebP are decoded as images. `.ktx2` files are loaded as KTX2. A file whose name is already in the list is rejected.
+- Select a texture in the list. Right-click it to remove it.
+- Preview the selection on the canvas. **2D View** draws one mip level. **3D View** draws the texture on a quad with an orbit camera. Sampling is nearest or linear.
+- Choose the GPU texture format. RGBA8 is always available. A Basis Universal texture (`needsTranscoding`, undefined Vulkan format) can also be shown as BC7, ASTC 4x4, BC3, or ETC2 when this GPU supports that format.
+- Generate mipmaps when the texture is not a KTX2 file, or when its KTX2 data is `R8G8B8A8_UNORM`, or when the GPU format is RGBA8. In 2D View, pick which mip level to show when the texture has more than one.
+- The footer shows resolution, mip count, and GPU memory. For a KTX2 file it also shows the Vulkan format name, "Universal Basis" when the file still needs transcoding, or an em dash when the format is undefined.
+- GPU Info shows the GPU vendor and name, and whether S3TC (BC1–BC3), BPTC (BC6–BC7), ETC2, ASTC, and PVRTC compression are supported.
+- Convert is enabled when the selection has decoded image data. It writes a KTX2 file and downloads it, then adds that file to the list. Encoding is uncompressed RGBA, Basis Universal UASTC, or Basis Universal ETC1S. UASTC and ETC1S have a quality setting. Mipmaps are optional. Zstandard or ZLib supercompression is available except for ETC1S. UASTC with supercompression also has an RDO quality setting.
 
-## React Compiler
+## Packages
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The viewer depends on these packages:
 
-## Expanding the ESLint configuration
+- [ris-framework](https://github.com/luka712/ris-framework-ts) — WebGL2 framework used to create the device, textures, materials, and render loop
+- [ris-framework-api](https://github.com/luka712/ris-framework-api-ts) — shared framework types (`IFramework`, `TextureFormat`, samplers, and the rest)
+- [ris-ktx2](https://github.com/luka712/ris-ktx2-ts) — KTX2 load, create, and Basis encode runtime
+- [ris-ktx2-api](https://github.com/luka712/ris-ktx2-api-ts) — KTX2 types and enumerations such as `VkFormat`
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+`ris-framework` and `ris-ktx2` are direct dependencies. The app imports the two API packages as well; they are installed with those dependencies.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+A browser with WebGL2 is required.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Scripts
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```sh
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Start the Vite dev server |
+| `npm run build` | Typecheck, then production build |
+| `npm run preview` | Serve the production build |
+| `npm run lint` | Run ESLint |

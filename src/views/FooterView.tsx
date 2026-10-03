@@ -1,6 +1,6 @@
 import {Paper, Stack, Typography} from "@mui/material";
 import {type IKtx2Texture, VkFormat } from "ris-ktx2-api";
-import {useTextureStore} from "../store/TextureStore.ts";
+import {textureDetails, useTextureStore} from "../store/TextureStore.ts";
 
 function FooterStat({label, value}: { label: string; value: string | number }) {
     return (
@@ -26,12 +26,10 @@ function ktx2FormatLabel(ktx2: IKtx2Texture): string {
  * Footer strip showing selected texture metrics.
  */
 export function FooterView() {
-    const resolution = useTextureStore((store) => store.resolution);
-    const memory = useTextureStore((store) => store.size);
     const selectedTexture = useTextureStore((store) => store.selectedTexture);
+    const {resolution, size: memory, mipLevels} = textureDetails(selectedTexture?.texture);
 
     const ktx2 = selectedTexture?.ktxContainer;
-    const mipLevels = selectedTexture?.texture?.mipLevels ?? 0;
 
     return (
         <Paper elevation={3} sx={{borderRadius: 5, px: {xs: 1, sm: 2}, py: 2}}>

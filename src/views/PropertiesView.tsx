@@ -6,7 +6,7 @@ import {SelectField, type SelectOption} from "../components/fields/SelectField.t
 import {CheckboxField} from "../components/fields/CheckboxField.tsx";
 import {View2D, View3D} from "../model/View.ts";
 import {textureFormatToString} from "../service/Mapper.ts";
-import {useTextureStore} from "../store/TextureStore.ts";
+import {textureDetails, useTextureStore} from "../store/TextureStore.ts";
 import {useViewerStore} from "../store/ViewerStore.ts";
 
 const VIEW_OPTIONS = [View2D, View3D];
@@ -51,12 +51,11 @@ function useTextureFormatOptions(): SelectOption<TextureFormat>[] {
  * Right column: view / sampler / texture settings for the selected texture.
  */
 export function PropertiesView() {
-    const textureFormat = useTextureStore((store) => store.textureFormat);
+    const selectedTexture = useTextureStore((store) => store.selectedTexture);
+    const {textureFormat, generateMipmaps, mipLevels} = textureDetails(selectedTexture?.texture);
     const setTextureFormat = useTextureStore((store) => store.setTextureFormat);
-    const generateMipmaps = useTextureStore((store) => store.generateMipmaps);
     const setGenerateMipmaps = useTextureStore((store) => store.setGenerateMipmaps);
     const canGenerateMipmaps = useTextureStore((store) => store.canGenerateMipmaps);
-    const mipLevels = useTextureStore(store => store.mipLevels);
 
     const view = useViewerStore(store => store.view);
     const setView = useViewerStore((store) => store.setView);

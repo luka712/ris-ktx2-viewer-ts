@@ -2,6 +2,7 @@ import {useEffect, useRef} from "react";
 import {
     Color,
     CullMode,
+    type GameTime,
     type IFramework,
     type IMesh,
     type ITexture2D,
@@ -46,6 +47,24 @@ function createScene(fw: IFramework): Scene {
     return {camera, mipMaterial, unlitMaterial, quad};
 }
 
+function syncCanvasToTexture(
+    canvas: HTMLCanvasElement | null,
+    framework: IFramework | null,
+    texture: ITexture2D | null | undefined,
+) {
+    if (!texture) {
+        return;
+    }
+
+    if (canvas) {
+        canvas.width = texture.width;
+        canvas.height = texture.height;
+    }
+    if (framework) {
+        framework.renderer.backBufferSize = vec2.fromValues(texture.width, texture.height);
+    }
+}
+
 /**
  * Creates the framework on the returned canvas ref, publishes it to ViewerStore,
  * and renders the selected texture every frame (2D mip inspection or 3D orbit view).
@@ -58,26 +77,23 @@ export function useFramework() {
     // Resize canvas / back buffer whenever the displayed GPU texture changes
     // (new selection, or the selected texture was recreated).
     useEffect(() => {
-        let lastTexture: ITexture2D | null | undefined = undefined;
+        const applyCurrent = () => {
+            syncCanvasToTexture(
+                canvasRef.current,
+                frameworkRef.current,
+                useTextureStore.getState().selectedTexture?.texture,
+            );
+        };
+
+        applyCurrent();
+        let lastTexture = useTextureStore.getState().selectedTexture?.texture;
         return useTextureStore.subscribe(({selectedTexture}) => {
             const texture = selectedTexture?.texture;
             if (texture === lastTexture) {
                 return;
             }
             lastTexture = texture;
-            if (!texture) {
-                return;
-            }
-
-            const canvas = canvasRef.current;
-            if (canvas) {
-                canvas.width = texture.width;
-                canvas.height = texture.height;
-            }
-            const fw = frameworkRef.current;
-            if (fw) {
-                fw.renderer.backBufferSize = vec2.fromValues(texture.width, texture.height);
-            }
+            syncCanvasToTexture(canvasRef.current, frameworkRef.current, texture);
         });
     }, []);
 
@@ -99,15 +115,13 @@ export function useFramework() {
         });
         fw.renderer.clearColor = Color.gray();
 
-        fw.addOnInitializedListener(() => {
+        const onInitialized = () => {
             scene = createScene(fw);
-        });
-
-        fw.addOnUpdateListener(gt => {
+        };
+        const onUpdate = (gt: GameTime) => {
             scene?.camera.update(gt);
-        });
-
-        fw.addOnRenderListener(() => {
+        };
+        const onRender = () => {
             const tex = useTextureStore.getState().selectedTexture?.texture;
             const {sampler, view, mipLevel} = useViewerStore.getState();
             if (!tex || !scene) {
@@ -143,18 +157,40 @@ export function useFramework() {
                 unlitMaterial.beforeRender();
                 unlitMaterial.renderMesh(quad);
             }
-        });
+        };
+
+        fw.addOnInitializedListener(onInitialized);
+        fw.addOnUpdateListener(onUpdate);
+        fw.addOnRenderListener(onRender);
 
         fw.initialize();
         frameworkRef.current = fw;
         useViewerStore.getState().setFramework(fw);
+        syncCanvasToTexture(canvas, fw, useTextureStore.getState().selectedTexture?.texture);
 
         return () => {
-            // Framework has no dispose API for these; dispose the GPU objects we created.
+            fw.removeOnInitializedListener(onInitialized);
+            fw.removeOnUpdateListener(onUpdate);
+            fw.removeOnRenderListener(onRender);
+
+            scene?.camera.dispose();
             scene?.mipMaterial.dispose();
             scene?.unlitMaterial.dispose();
             scene?.quad.dispose();
             scene = null;
+
+            const {sampler} = useViewerStore.getState();
+            sampler?.dispose();
+            useViewerStore.setState({
+                framework: null,
+                sampler: undefined,
+                supportsBC3: false,
+                supportsBC7: false,
+                supportsASTC: false,
+                supportsETC2: false,
+            });
+
+            // Framework.dispose() is currently a no-op, so the render loop cannot be stopped here.
             fw.dispose();
             frameworkRef.current = null;
         };

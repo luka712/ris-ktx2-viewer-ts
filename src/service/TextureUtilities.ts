@@ -41,5 +41,6 @@ export function downloadKtx2(
     link.download = filename;
     link.click();
 
-    URL.revokeObjectURL(url);
+    // Revoke after the click so the browser can start the download, but do not keep the blob URL.
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

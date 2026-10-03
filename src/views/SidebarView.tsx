@@ -19,6 +19,7 @@ export function SidebarView() {
         <Box>
             <Tabs
                 value={tab}
+                aria-label="Sidebar"
                 sx={{paddingTop: 2, paddingBottom: 2}}
                 onChange={(_event, newValue: number) => setTab(newValue)}
                 variant="scrollable"
