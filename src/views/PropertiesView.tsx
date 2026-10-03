@@ -1,0 +1,99 @@
+import {Divider, Stack} from "@mui/material";
+import {SamplerFilter, TextureFormat} from "ris-framework-api";
+import {VkFormat} from "ris-ktx2-api";
+import {Panel} from "../components/Panel.tsx";
+import {SelectField, type SelectOption} from "../components/fields/SelectField.tsx";
+import {CheckboxField} from "../components/fields/CheckboxField.tsx";
+import {View2D, View3D} from "../model/View.ts";
+import {textureFormatToString} from "../service/Mapper.ts";
+import {useTextureStore} from "../store/TextureStore.ts";
+import {useViewerStore} from "../store/ViewerStore.ts";
+
+const VIEW_OPTIONS = [View2D, View3D];
+
+const FILTER_OPTIONS = [
+    {value: SamplerFilter.NEAREST, label: "Nearest"},
+    {value: SamplerFilter.LINEAR, label: "Linear"},
+];
+
+const VIEW_TOOLTIP = "Switches between flat 2D inspection and an orbit-camera 3D preview.";
+const FILTER_TOOLTIP = "Controls how texture pixels are sampled when the texture is scaled or viewed at different sizes. Linear filtering produces smoother results, while nearest filtering preserves sharp, pixelated edges.";
+const FORMAT_TOOLTIP = "Specifies the GPU texture format used to display the texture. Compressed formats reduce memory usage, at the expense of quality.";
+const MIPMAPS_TOOLTIP = "Generates smaller versions of the texture for use when the texture is displayed at reduced sizes. Mipmaps can improve visual quality and reduce texture sampling artifacts.";
+const MIP_LEVEL_TOOLTIP = "Selects which mipmap level of the texture to display. Level 0 is the full-resolution texture; higher levels contain progressively smaller versions.";
+
+/**
+ * GPU formats the selected texture can be displayed in: always RGBA8, plus the
+ * compressed formats the GPU supports when the texture is Basis Universal (transcodable).
+ */
+function useTextureFormatOptions(): SelectOption<TextureFormat>[] {
+    const ktx = useTextureStore((state) => state.selectedTexture?.ktxContainer);
+    const bc7 = useViewerStore(state => state.supportsBC7);
+    const astc = useViewerStore(state => state.supportsASTC);
+    const bc3 = useViewerStore(state => state.supportsBC3);
+    const etc2 = useViewerStore(state => state.supportsETC2);
+
+    const isBasisCompressed = Boolean(ktx?.needsTranscoding) && ktx?.vkFormat === VkFormat.UNDEFINED;
+    const formats = [
+        TextureFormat.RGBA_8_UNORM,
+        ...(isBasisCompressed ? [
+            bc7 && TextureFormat.BC7_RGBA_UNORM,
+            astc && TextureFormat.ASTC_4X4_RGBA,
+            bc3 && TextureFormat.BC3_RGBA_UNORM,
+            etc2 && TextureFormat.ETC2_RGBA8_UNORM,
+        ] : []),
+    ].filter((format) => format !== false);
+
+    return formats.map((format) => ({value: format, label: textureFormatToString(format)}));
+}
+
+/**
+ * Right column: view / sampler / texture settings for the selected texture.
+ */
+export function PropertiesView() {
+    const textureFormat = useTextureStore((store) => store.textureFormat);
+    const setTextureFormat = useTextureStore((store) => store.setTextureFormat);
+    const generateMipmaps = useTextureStore((store) => store.generateMipmaps);
+    const setGenerateMipmaps = useTextureStore((store) => store.setGenerateMipmaps);
+    const canGenerateMipmaps = useTextureStore((store) => store.canGenerateMipmaps);
+    const mipLevels = useTextureStore(store => store.mipLevels);
+
+    const view = useViewerStore(store => store.view);
+    const setView = useViewerStore((store) => store.setView);
+    const filter = useViewerStore((store) => store.filter);
+    const setFilter = useViewerStore((store) => store.setFilter);
+    const mipLevel = useViewerStore(store => store.mipLevel);
+    const setMipLevel = useViewerStore(store => store.setMipLevel);
+
+    const formatOptions = useTextureFormatOptions();
+    const mipLevelOptions = Array.from({length: mipLevels}, (_, level) => level);
+
+    return (
+        <Panel>
+            <Stack direction="column">
+                <SelectField label="View" tooltip={VIEW_TOOLTIP}
+                             value={view} options={VIEW_OPTIONS} onChange={setView}/>
+                <Divider/>
+                <SelectField label="Filter" tooltip={FILTER_TOOLTIP}
+                             value={filter} options={FILTER_OPTIONS} onChange={setFilter}/>
+                <Divider/>
+                <SelectField label="Texture Format" tooltip={FORMAT_TOOLTIP}
+                             value={textureFormat} options={formatOptions} onChange={setTextureFormat}/>
+                {canGenerateMipmaps() && (
+                    <>
+                        <Divider/>
+                        <CheckboxField label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
+                                       value={generateMipmaps} onChange={setGenerateMipmaps}/>
+                    </>
+                )}
+                {view === View2D && mipLevels > 1 && (
+                    <>
+                        <Divider/>
+                        <SelectField label="Mipmap Level" tooltip={MIP_LEVEL_TOOLTIP}
+                                     value={mipLevel} options={mipLevelOptions} onChange={setMipLevel}/>
+                    </>
+                )}
+            </Stack>
+        </Panel>
+    );
+}
