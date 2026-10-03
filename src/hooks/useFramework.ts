@@ -190,7 +190,7 @@ export function useFramework() {
                 supportsETC2: false,
             });
 
-            // Framework.dispose() is currently a no-op, so the render loop cannot be stopped here.
+            // TODO: Framework.dispose() is a no-op, so the render loop cannot be stopped from this package.
             fw.dispose();
             frameworkRef.current = null;
         };

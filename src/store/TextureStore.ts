@@ -143,6 +143,7 @@ export const useTextureStore = create<TextureStore>((set, get) => {
             const nextTextures = textures.filter((item) => item !== texture);
             const removingSelection = selectedTexture === texture;
 
+            // TODO: The GPU texture is disposed here; the source image and KTX2 container are not.
             texture.texture?.dispose();
             set({
                 textures: nextTextures,
