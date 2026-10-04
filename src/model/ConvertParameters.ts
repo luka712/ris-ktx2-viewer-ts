@@ -4,6 +4,7 @@ import {RDO_BALANCED} from "./RDOCompressionConstants.ts";
 export class ConvertParameters {
     public fileName = "";
     public encoding = "";
+    public blockAlign = true;
     public uastcQuality = KTX_MEDIUM_QUALITY;
     public etc1sQuality = KTX_MEDIUM_QUALITY;
     public rdoQuality = RDO_BALANCED;

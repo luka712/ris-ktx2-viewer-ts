@@ -19,8 +19,9 @@
     "react-dom": "^19.2.7",
     "react-dropzone": "^19.1.1",
     "reflect-metadata": "^0.2.2",
-    "ris-framework": "^0.1.0-dev.7",
-    "ris-ktx2": "^0.1.0-dev.2",
+    "ris-framework": "file:./../ris-framework-ts",
+    "ris-framework-api": "^0.1.0-dev.3",
+    "ris-ktx2": "^0.1.0-dev.7",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

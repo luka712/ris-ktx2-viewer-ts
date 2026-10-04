@@ -12,11 +12,11 @@ import {
     type UnlitMaterial,
     UnlitMaterialDescriptor
 } from "ris-framework-api";
-import {Framework, TextureSamplerFilteringPreset} from "ris-framework";
 import {mat4, vec2, vec3} from "gl-matrix";
 import {View2D, View3D} from "../model/View.ts";
 import {useTextureStore} from "../store/TextureStore.ts";
 import {useViewerStore} from "../store/ViewerStore.ts";
+import {Framework, TextureSamplerFilteringPreset} from "ris-framework";
 
 /** GPU objects created once the framework is initialized. */
 interface Scene {

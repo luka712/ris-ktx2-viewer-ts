@@ -21,16 +21,6 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-
-    /*
-     * Prefer built API packages for types.
-     * ris-framework is shimmed (see src/shims) so sibling implementation sources
-     * are not pulled into this project's typecheck.
-     */
-    "paths": {
-      "ris-framework": ["./src/shims/ris-framework.d.ts"],
-      "ris-framework-api": ["../ris-framework-api-ts/src/index.ts"],
-    }
   },
   "include": ["src"]
 }

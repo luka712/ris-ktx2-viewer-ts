@@ -61,6 +61,8 @@ const ENCODING_VALUE_TOOLTIPS: Record<string, string> = {
     [KTX_ENCODING_RGBA]: "Store the texture as uncompressed raw RGBA data without texture encoding.",
 };
 
+const BLOCK_ALIGN_TOOLTIP = "Align image dimensions to block size of compressed texture format."
+
 const MIPMAPS_TOOLTIP = "Generates smaller versions of the texture for use when displayed at reduced sizes. Mipmaps can improve visual quality and reduce texture sampling artifacts.";
 
 const UASTC_QUALITY_TOOLTIP = "Controls UASTC encoding quality versus encode time. Higher quality produces better image fidelity but takes longer to encode.";
@@ -95,10 +97,11 @@ export default function ConvertDialog() {
 
     const [open, setOpen] = useState(false);
     const [filename, setFilename] = useState("");
+    const [align, setAlign] = useState(true);
     const [converting, setConverting] = useState(false);
     const [convertError, setConvertError] = useState<string | null>(null);
     const [encoding, setEncoding] = useState(KTX_ENCODING_BASIS_UNIVERSAL_UASTC);
-    const [compression, setCompression] = useState(KTX_COMPRESSION_ZSTANDARD);
+    const [compression, setCompression] = useState(KTX_COMPRESSION_NONE);
     const [compressionLevelZstd, setCompressionLevelZstd] = useState(19);
     const [compressionLevelZLib, setCompressionLevelZLib] = useState(6);
     const [uastcQuality, setUastcQuality] = useState(KTX_MEDIUM_QUALITY);
@@ -130,6 +133,7 @@ export default function ConvertDialog() {
 
         const convertParams = new ConvertParameters();
         convertParams.fileName = filename;
+        convertParams.blockAlign = align;
         convertParams.encoding = encoding;
         convertParams.uastcQuality = uastcQuality;
         convertParams.etc1sQuality = etc1sQuality;
@@ -213,6 +217,11 @@ export default function ConvertDialog() {
                             <SelectField row label="ETC1S Quality" tooltip={ETC1S_QUALITY_TOOLTIP}
                                          value={etc1sQuality} options={QUALITY_OPTIONS} onChange={setEtc1sQuality}/>
                         }
+
+                        {(isUastc || isEtc1s) &&
+                            <CheckboxField value={align} onChange={setAlign} label="Block Align" row
+                                           tooltip={BLOCK_ALIGN_TOOLTIP}
+                            />}
 
                         {/* ETC1S does not support ZSTD or ZLIB compression */}
                         {!isEtc1s && (

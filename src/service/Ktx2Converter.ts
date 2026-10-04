@@ -1,4 +1,10 @@
-import {type IKtx2Texture, type IKtxTextureCreateInfo, type IKtxBasisParams, KtxCreateStorage, VkFormat} from "ris-ktx2-api";
+import {
+    type IKtx2Texture,
+    type IKtxTextureCreateInfo,
+    type IKtxBasisParams,
+    KtxCreateStorage,
+    VkFormat
+} from "ris-ktx2-api";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {downloadKtx2} from "./TextureUtilities.ts";
 import {
@@ -8,13 +14,14 @@ import {
 import {changeFileExtension} from "./formatter.ts";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
 import {ConvertParameters} from "../model/ConvertParameters.ts";
-import type {IFramework} from "ris-framework-api";
+import {AlignUtilities, type IFramework} from "ris-framework-api";
 import {KTX_COMPRESSION_ZLIB, KTX_COMPRESSION_ZSTANDARD} from "../model/Ktx2CompressionConstants.ts";
 import {
     etECT1SQualityLevel,
     getUastcEncodingFlags
 } from "../model/CompressionQualityConstants.ts";
 import {getUastcRDOQualityScalar} from "../model/RDOCompressionConstants.ts";
+import {vec2} from "gl-matrix";
 
 export interface ConvertResult {
     success: boolean,
@@ -38,28 +45,55 @@ export async function convertToKtx2Async(
         throw new Error("No texture selected");
     }
 
+    const encoding = convertParameters.encoding;
     // Work on a local image reference; never mutate the live selection.
-    const sourceImage = selectedTexture.image;
-    let image = sourceImage;
-    let mipmapsImage: typeof sourceImage | null = null;
+    const image = selectedTexture.image;
+    let sourceImage = image;
+    let baseWidth = image.baseWidth;
+    let baseHeight = image.baseHeight;
+    let mipLevelsToGen = 1;
+
+    if (convertParameters.blockAlign) {
+        if (encoding == KTX_ENCODING_BASIS_UNIVERSAL_UASTC || encoding == KTX_ENCODING_BASIS_UNIVERSAL_UASTC) {
+            if (baseWidth % 4 != 0 || baseHeight % 4 != 0) {
+                baseWidth = AlignUtilities.align(baseWidth, 4);
+                baseHeight = AlignUtilities.align(baseHeight, 4);
+                sourceImage = await fw.imageProcessor.resizeAsync(image, vec2.fromValues(baseWidth, baseHeight));
+
+                // Find how many mip levels we want to have.
+                if(convertParameters.generateMipmaps) {
+
+                    let minDimension = Math.min(baseWidth, baseHeight);
+                    while (minDimension > 4) {
+                        mipLevelsToGen++;
+                        minDimension /= 2;
+                    }
+                }
+            }
+        }
+    }
 
     try {
-        if (convertParameters.generateMipmaps) {
-            mipmapsImage = await fw.imageProcessor.generateMipmapsAsync(sourceImage);
-            image = mipmapsImage;
+        if (convertParameters.generateMipmaps && mipLevelsToGen > 1) {
+            const needsDispose = sourceImage != image;
+            const mipmaped = await fw.imageProcessor.generateMipmapsAsync(sourceImage, mipLevelsToGen);
+            if(needsDispose) {
+                sourceImage.dispose();
+            }
+            sourceImage = mipmaped;
         }
         const fileName = changeFileExtension(convertParameters.fileName, KTX2_FILE_EXTENSION);
 
         const desc: IKtxTextureCreateInfo = {
-            baseWidth: image.baseWidth,
-            baseHeight: image.baseHeight,
+            baseWidth: baseWidth,
+            baseHeight: baseHeight,
             vkFormat: VkFormat.R8G8B8A8_UNORM,
-            numLevels: image.numLevels,
+            numLevels: sourceImage.numLevels,
         };
         const tex = fw.ktx2Factory!.create(desc, KtxCreateStorage.ALLOC_STORAGE);
 
         for (let i = 0; i < desc.numLevels!; i++) {
-            let data = image.getData(i);
+            let data = sourceImage.getData(i);
             if (data instanceof HTMLImageElement) {
                 data = fw.imageProcessor.getBytesFromHtmlImage(data);
             } else {
@@ -70,20 +104,18 @@ export async function convertToKtx2Async(
         }
 
         // If universal basis
-        const encoding = convertParameters.encoding;
         const uastc = encoding == KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
         if (uastc || encoding === KTX_ENCODING_BASIS_UNIVERSAL_ETC1S) {
             const basisParams: IKtxBasisParams = {
                 verbose: true
             };
 
-            if(uastc){
+            if (uastc) {
                 basisParams.uastc = true;
                 basisParams.uastcFlags = getUastcEncodingFlags(convertParameters.uastcQuality);
                 basisParams.uastcRDO = true;
                 basisParams.uastcRDOQualityScalar = getUastcRDOQualityScalar(convertParameters.rdoQuality);
-            }
-            else {
+            } else {
                 basisParams.qualityLevel = etECT1SQualityLevel(convertParameters.etc1sQuality);
             }
             tex.compressBasis(basisParams);
@@ -115,7 +147,9 @@ export async function convertToKtx2Async(
             name: fileName,
         }
     } finally {
-        // Dispose only the temporary mipmap image, never the selection's image.
-        mipmapsImage?.dispose();
+        // Dispose of source image if it's not original copy.
+        if(sourceImage != image){
+            sourceImage?.dispose();
+        }
     }
 }
