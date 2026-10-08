@@ -1,13 +1,14 @@
-import {Divider, Stack} from "@mui/material";
-import {SamplerFilter, TextureFormat} from "ris-framework-api";
-import {VkFormat} from "ris-ktx2-api";
+import {useState} from "react";
+import {Alert, Divider, Stack} from "@mui/material";
+import {SamplerFilter, TextureFormat} from "ris-framework";
+import {VkFormat} from "ris-ktx2";
 import {Panel} from "../components/Panel.tsx";
 import {SelectField, type SelectOption} from "../components/fields/SelectField.tsx";
 import {CheckboxField} from "../components/fields/CheckboxField.tsx";
 import {View2D, View3D} from "../model/View.ts";
-import {textureFormatToString} from "../service/Mapper.ts";
-import {textureDetails, useTextureStore} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/ViewerStore.ts";
+import {textureFormatToString} from "../service/mapper.ts";
+import {canGenerateMipmaps, textureDetails, useSelectedTexture, useTextureStore} from "../store/TextureStore.ts";
+import {useViewerStore} from "../store/viewerStore.ts";
 
 const VIEW_OPTIONS = [View2D, View3D];
 
@@ -27,20 +28,18 @@ const MIP_LEVEL_TOOLTIP = "Selects which mipmap level of the texture to display.
  * compressed formats the GPU supports when the texture is Basis Universal (transcodable).
  */
 function useTextureFormatOptions(): SelectOption<TextureFormat>[] {
-    const ktx = useTextureStore((state) => state.selectedTexture?.ktxContainer);
-    const bc7 = useViewerStore(state => state.supportsBC7);
-    const astc = useViewerStore(state => state.supportsASTC);
-    const bc3 = useViewerStore(state => state.supportsBC3);
-    const etc2 = useViewerStore(state => state.supportsETC2);
+    const ktx = useSelectedTexture()?.ktxContainer;
+    const framework = useViewerStore((state) => state.framework);
+    const features = framework?.graphicsDevice.features;
 
     const isBasisCompressed = Boolean(ktx?.needsTranscoding) && ktx?.vkFormat === VkFormat.UNDEFINED;
     const formats = [
         TextureFormat.RGBA_8_UNORM,
-        ...(isBasisCompressed ? [
-            bc7 && TextureFormat.BC7_RGBA_UNORM,
-            astc && TextureFormat.ASTC_4X4_RGBA,
-            bc3 && TextureFormat.BC3_RGBA_UNORM,
-            etc2 && TextureFormat.ETC2_RGBA8_UNORM,
+        ...(isBasisCompressed && features ? [
+            features.supportsTextureCompressionBC && TextureFormat.BC7_RGBA_UNORM,
+            features.supportsTextureCompressionASTC && TextureFormat.ASTC_4X4_RGBA,
+            features.supportsTextureCompressionS3TC && TextureFormat.BC3_RGBA_UNORM,
+            features.supportsTextureCompressionETC2 && TextureFormat.ETC2_RGBA8_UNORM,
         ] : []),
     ].filter((format) => format !== false);
 
@@ -51,21 +50,33 @@ function useTextureFormatOptions(): SelectOption<TextureFormat>[] {
  * Right column: view / sampler / texture settings for the selected texture.
  */
 export function PropertiesView() {
-    const selectedTexture = useTextureStore((store) => store.selectedTexture);
+    const selectedTexture = useSelectedTexture();
     const {textureFormat, generateMipmaps, mipLevels} = textureDetails(selectedTexture?.texture);
     const setTextureFormat = useTextureStore((store) => store.setTextureFormat);
     const setGenerateMipmaps = useTextureStore((store) => store.setGenerateMipmaps);
-    const canGenerateMipmaps = useTextureStore((store) => store.canGenerateMipmaps);
+    const mipLevel = useTextureStore((store) => store.mipLevel);
+    const setMipLevel = useTextureStore((store) => store.setMipLevel);
 
     const view = useViewerStore(store => store.view);
     const setView = useViewerStore((store) => store.setView);
     const filter = useViewerStore((store) => store.filter);
     const setFilter = useViewerStore((store) => store.setFilter);
-    const mipLevel = useViewerStore(store => store.mipLevel);
-    const setMipLevel = useViewerStore(store => store.setMipLevel);
+
+    const [textureError, setTextureError] = useState<string | null>(null);
 
     const formatOptions = useTextureFormatOptions();
     const mipLevelOptions = Array.from({length: mipLevels}, (_, level) => level);
+
+    /** Recreating the GPU texture can fail (e.g. transcode); the store keeps the current texture then. */
+    const recreate = (apply: () => void) => {
+        try {
+            apply();
+            setTextureError(null);
+        } catch (err) {
+            console.error("Failed to recreate texture:", err);
+            setTextureError(err instanceof Error ? err.message : String(err));
+        }
+    };
 
     return (
         <Panel>
@@ -77,12 +88,14 @@ export function PropertiesView() {
                              value={filter} options={FILTER_OPTIONS} onChange={setFilter}/>
                 <Divider/>
                 <SelectField label="Texture Format" tooltip={FORMAT_TOOLTIP}
-                             value={textureFormat} options={formatOptions} onChange={setTextureFormat}/>
-                {canGenerateMipmaps() && (
+                             value={textureFormat} options={formatOptions}
+                             onChange={(value) => recreate(() => setTextureFormat(value))}/>
+                {canGenerateMipmaps(selectedTexture) && (
                     <>
                         <Divider/>
                         <CheckboxField label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
-                                       value={generateMipmaps} onChange={setGenerateMipmaps}/>
+                                       value={generateMipmaps}
+                                       onChange={(value) => recreate(() => setGenerateMipmaps(value))}/>
                     </>
                 )}
                 {view === View2D && mipLevels > 1 && (
@@ -91,6 +104,11 @@ export function PropertiesView() {
                         <SelectField label="Mipmap Level" tooltip={MIP_LEVEL_TOOLTIP}
                                      value={mipLevel} options={mipLevelOptions} onChange={setMipLevel}/>
                     </>
+                )}
+                {textureError && (
+                    <Alert severity="error" onClose={() => setTextureError(null)} sx={{m: 1}}>
+                        {textureError}
+                    </Alert>
                 )}
             </Stack>
         </Panel>

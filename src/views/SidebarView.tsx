@@ -27,7 +27,7 @@ export function SidebarView() {
             >
                 {TABS.map(({label}) => <Tab key={label} label={label}/>)}
             </Tabs>
-            <Stack direction="column" spacing={2} sx={{marginLeft: 2, marginRight: 2}}>
+            <Stack direction="column" spacing={2} sx={{marginLeft: 1, marginRight: 1}}>
                 <Content/>
             </Stack>
         </Box>

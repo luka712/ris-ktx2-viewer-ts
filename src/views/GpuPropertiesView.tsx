@@ -1,6 +1,6 @@
 import {useMemo} from "react";
-import {Box} from "@mui/material";
-import {useViewerStore} from "../store/ViewerStore.ts";
+import {Alert, Box} from "@mui/material";
+import {useViewerStore} from "../store/viewerStore.ts";
 import {type Property, PropertyList} from "../components/PropertyList.tsx";
 
 const supported = (value: boolean) => (value ? "Supported" : "Not Supported");
@@ -8,6 +8,7 @@ const supported = (value: boolean) => (value ? "Supported" : "Not Supported");
 /** Sidebar "GPU Info" tab. */
 export function GpuPropertiesView() {
     const framework = useViewerStore(store => store.framework);
+    const initError = useViewerStore(store => store.initError);
 
     const [gpuProperties, gpuFeatures] = useMemo((): [Property[], Property[]] => {
         if (!framework) {
@@ -31,6 +32,9 @@ export function GpuPropertiesView() {
     }, [framework]);
 
     if (!framework) {
+        if (initError) {
+            return <Alert severity="error">GPU initialization failed: {initError}</Alert>;
+        }
         return <Box sx={{p: 2}}>Initializing GPU…</Box>;
     }
 

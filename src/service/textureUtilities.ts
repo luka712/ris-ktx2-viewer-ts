@@ -1,4 +1,4 @@
-import {type IFramework, RawImageData} from "ris-framework-api";
+import {type IFramework, RawImageData} from "ris-framework";
 
 const IMAGE_MIME_TYPES = new Set([
     "image/png",

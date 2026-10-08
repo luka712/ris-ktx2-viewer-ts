@@ -36,8 +36,8 @@ describe("ETC1S quality wiring", () => {
         );
     });
 
-    it("Ktx2Converter uses convertParameters.etc1sQuality for ETC1S", () => {
-        const source = readFileSync(join(here, "../src/service/Ktx2Converter.ts"), "utf8");
+    it("Ktx2Encoder (shared by worker and main-thread convert) uses convertParameters.etc1sQuality for ETC1S", () => {
+        const source = readFileSync(join(here, "../src/service/Ktx2Encoder.ts"), "utf8");
 
         assert.match(
             source,

@@ -8,12 +8,11 @@ import {
     DialogTitle,
     LinearProgress,
     Stack,
+    Tooltip,
     useMediaQuery,
     useTheme,
 } from "@mui/material";
-import {useTextureStore} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/ViewerStore.ts";
-import {convertToKtx2Async} from "../service/Ktx2Converter.ts";
+import {useConvertStore} from "../store/ConvertStore.ts";
 import {changeFileExtension} from "../service/formatter.ts";
 import {TextInputField} from "../components/fields/TextInputField.tsx";
 import {SelectField} from "../components/fields/SelectField.tsx";
@@ -22,204 +21,148 @@ import {SliderField} from "../components/fields/SliderField.tsx";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {ConvertParameters} from "../model/ConvertParameters.ts";
+import {useDismissedFlag} from "../hooks/useDismissedFlag.ts";
 import {
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
-    KTX_ENCODING_RGBA
 } from "../model/Ktx2EncodingConstants.ts";
-import {
-    KTX_HIGH_QUALITY,
-    KTX_HIGHEST_QUALITY,
-    KTX_LOW_QUALITY,
-    KTX_LOWEST_QUALITY,
-    KTX_MEDIUM_QUALITY
-} from "../model/CompressionQualityConstants.ts";
 import {
     KTX_COMPRESSION_NONE,
     KTX_COMPRESSION_ZLIB,
     KTX_COMPRESSION_ZSTANDARD
 } from "../model/Ktx2CompressionConstants.ts";
+import {RDO_QUALITY_OPTIONS} from "../model/RDOCompressionConstants.ts";
 import {
-    RDO_BALANCED,
-    RDO_HIGH_QUALITY,
-    RDO_HIGHEST_QUALITY,
-    RDO_QUALITY_OPTIONS,
-    RDO_SMALLER_FILE,
-    RDO_SMALLEST_FILE,
-} from "../model/RDOCompressionConstants.ts";
+    BLOCK_ALIGN_TOOLTIP,
+    COMPRESSION_LEVEL_ZLIB_TOOLTIP,
+    COMPRESSION_LEVEL_ZSTD_TOOLTIP,
+    COMPRESSION_OPTIONS,
+    COMPRESSION_TOOLTIP,
+    COMPRESSION_VALUE_TOOLTIPS,
+    DEFAULT_COMPRESSION_LEVEL_ZLIB,
+    DEFAULT_COMPRESSION_LEVEL_ZSTD,
+    ENCODING_OPTIONS,
+    ENCODING_TOOLTIP,
+    ENCODING_VALUE_TOOLTIPS,
+    ETC1S_QUALITY_TOOLTIP,
+    FILE_NAME_TOOLTIP,
+    MIPMAPS_TOOLTIP,
+    QUALITY_OPTIONS,
+    RDO_QUALITY_TOOLTIP,
+    RDO_VALUE_TOOLTIPS,
+    UASTC_QUALITY_TOOLTIP,
+} from "../model/ConvertOptionsConstants.ts";
 
-const ENCODING_OPTIONS = [KTX_ENCODING_RGBA, KTX_ENCODING_BASIS_UNIVERSAL_UASTC, KTX_ENCODING_BASIS_UNIVERSAL_ETC1S];
-const QUALITY_OPTIONS = [KTX_LOWEST_QUALITY, KTX_LOW_QUALITY, KTX_MEDIUM_QUALITY, KTX_HIGH_QUALITY, KTX_HIGHEST_QUALITY];
-const COMPRESSION_OPTIONS = [KTX_COMPRESSION_NONE, KTX_COMPRESSION_ZSTANDARD, KTX_COMPRESSION_ZLIB];
+const SLOW_WARNING_STORAGE_KEY = "ris-ktx2-viewer.convertSlowWarningDismissed";
+const CANNOT_CANCEL_TOOLTIP = "This conversion is running on the main thread and can't be cancelled.";
 
-const FILE_NAME_TOOLTIP = "Name of the output KTX2 file saved after conversion.";
+interface ConvertDialogProps {
+    open: boolean;
+    /** Texture to convert. Read when the dialog instance mounts (see ConvertButton). */
+    texture: ITexture2DContainer | null;
+}
 
-const ENCODING_TOOLTIP = "Encode the texture with the specified codec before saving it.";
-const ENCODING_VALUE_TOOLTIPS: Record<string, string> = {
-    [KTX_ENCODING_BASIS_UNIVERSAL_UASTC]: "Encode the texture using UASTC, providing high-quality GPU texture compression.",
-    [KTX_ENCODING_BASIS_UNIVERSAL_ETC1S]: "Encode the texture using ETC1S, providing smaller files at the cost of image quality.",
-    [KTX_ENCODING_RGBA]: "Store the texture as uncompressed raw RGBA data without texture encoding.",
-};
+function initialParameters(texture: ITexture2DContainer | null): ConvertParameters {
+    const params = new ConvertParameters();
+    params.fileName = texture?.name ? changeFileExtension(texture.name, KTX2_FILE_EXTENSION) : "";
+    params.encoding = KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
+    params.compression = KTX_COMPRESSION_NONE;
+    params.compressionLevelZstd = DEFAULT_COMPRESSION_LEVEL_ZSTD;
+    params.compressionLevelZLib = DEFAULT_COMPRESSION_LEVEL_ZLIB;
+    return params;
+}
 
-const BLOCK_ALIGN_TOOLTIP = "Align image dimensions to block size of compressed texture format."
-
-const MIPMAPS_TOOLTIP = "Generates smaller versions of the texture for use when displayed at reduced sizes. Mipmaps can improve visual quality and reduce texture sampling artifacts.";
-
-const UASTC_QUALITY_TOOLTIP = "Controls UASTC encoding quality versus encode time. Higher quality produces better image fidelity but takes longer to encode.";
-const ETC1S_QUALITY_TOOLTIP = "Controls ETC1S image quality versus file size. Higher quality preserves more detail but produces larger files and takes longer to encode.";
-
-const COMPRESSION_TOOLTIP = "Applies lossless supercompression to reduce file size after encoding. Unavailable for ETC1S, which already uses its own built-in compression.";
-const COMPRESSION_VALUE_TOOLTIPS: Record<string, string> = {
-    [KTX_COMPRESSION_NONE]: "Store the encoded texture without additional lossless compression.",
-    [KTX_COMPRESSION_ZSTANDARD]: "Apply Zstandard lossless supercompression for smaller files. Generally preferred over ZLib.",
-    [KTX_COMPRESSION_ZLIB]: "Apply ZLib lossless supercompression for smaller files.",
-};
-
-const COMPRESSION_LEVEL_ZSTD_TOOLTIP = "Higher levels produce smaller files but take longer and use more memory. Range is 1–22; values above 20 need substantially more memory.";
-const COMPRESSION_LEVEL_ZLIB_TOOLTIP = "Higher levels produce smaller files but take longer to compress. Range is 1–9.";
-
-const RDO_QUALITY_TOOLTIP = "Rate-Distortion Optimization conditions UASTC data so lossless compression packs it more tightly. Prefer higher quality for less visual change, or smaller file for stronger size reduction.";
-const RDO_VALUE_TOOLTIPS: Record<string, string> = {
-    [RDO_SMALLEST_FILE]: "Strongest size reduction; more visible quality loss after lossless compression.",
-    [RDO_SMALLER_FILE]: "Favors a smaller file with a moderate quality trade-off.",
-    [RDO_BALANCED]: "Balanced trade-off between visual quality and compressed file size.",
-    [RDO_HIGH_QUALITY]: "Preserves more image quality; produces a larger compressed file.",
-    [RDO_HIGHEST_QUALITY]: "Least aggressive RDO; closest to the original UASTC quality with a larger file.",
-};
-
-export default function ConvertDialog() {
-    const framework = useViewerStore(store => store.framework);
-    const selectedTexture = useTextureStore(store => store.selectedTexture);
-    const addTexture = useTextureStore(store => store.addTexture);
+/**
+ * Convert To Ktx2 dialog. Conversion state lives in ConvertStore, so closing the dialog
+ * (button, Escape, backdrop) or unmounting it never stops a running conversion; the result
+ * is still downloaded and added to the texture list. While a conversion runs, the form is
+ * replaced by a status message and a new conversion cannot be started; "Cancel conversion"
+ * is the only way to stop it (not available while the main-thread fallback runs).
+ */
+export default function ConvertDialog({open, texture}: ConvertDialogProps) {
+    const isConverting = useConvertStore(store => store.isConverting);
+    const outputName = useConvertStore(store => store.outputName);
+    const lastError = useConvertStore(store => store.lastError);
+    const startConversion = useConvertStore(store => store.startConversion);
+    const closeDialog = useConvertStore(store => store.closeDialog);
+    const clearLastError = useConvertStore(store => store.clearLastError);
+    const canCancel = useConvertStore(store => store.canCancel);
+    const isCancelling = useConvertStore(store => store.isCancelling);
+    const cancelConversion = useConvertStore(store => store.cancelConversion);
 
     const theme = useTheme();
     const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
 
-    const [open, setOpen] = useState(false);
-    const [filename, setFilename] = useState("");
-    const [align, setAlign] = useState(true);
-    const [converting, setConverting] = useState(false);
-    const [convertError, setConvertError] = useState<string | null>(null);
-    const [encoding, setEncoding] = useState(KTX_ENCODING_BASIS_UNIVERSAL_UASTC);
-    const [compression, setCompression] = useState(KTX_COMPRESSION_NONE);
-    const [compressionLevelZstd, setCompressionLevelZstd] = useState(19);
-    const [compressionLevelZLib, setCompressionLevelZLib] = useState(6);
-    const [uastcQuality, setUastcQuality] = useState(KTX_MEDIUM_QUALITY);
-    const [etc1sQuality, setEtc1sQuality] = useState(KTX_MEDIUM_QUALITY);
-    const [generateMipmaps, setGenerateMipmaps] = useState(false);
-    const [rdoQuality, setRdoQuality] = useState(RDO_BALANCED);
+    const [slowWarningDismissed, dismissSlowWarning] = useDismissedFlag(SLOW_WARNING_STORAGE_KEY);
+    const [params, setParams] = useState(() => initialParameters(texture));
 
-    const isUastc = encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
-    const isEtc1s = encoding === KTX_ENCODING_BASIS_UNIVERSAL_ETC1S;
+    /** Setter for one form field. */
+    const field = <K extends keyof ConvertParameters>(key: K) =>
+        (value: ConvertParameters[K]) => setParams((prev) => ({...prev, [key]: value}));
 
-    const handleOpen = () => {
-        const name = selectedTexture?.name ?? "";
-        setFilename(name ? changeFileExtension(name, KTX2_FILE_EXTENSION) ?? "ktx.ktx2" : "");
-        setConvertError(null);
-        setOpen(true);
-    };
+    const isUastc = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
+    const isEtc1s = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_ETC1S;
 
-    const handleClose = () => {
-        if (converting) {
+    const handleConvert = () => {
+        if (!texture?.image) {
+            // This should never happen (Convert is disabled without a source image).
             return;
         }
-        setOpen(false);
-        setConvertError(null);
-    };
-
-    const handleConvert = async () => {
-        setConverting(true);
-        setConvertError(null);
-
-        const convertParams = new ConvertParameters();
-        convertParams.fileName = filename;
-        convertParams.blockAlign = align;
-        convertParams.encoding = encoding;
-        convertParams.uastcQuality = uastcQuality;
-        convertParams.etc1sQuality = etc1sQuality;
-        convertParams.rdoQuality = rdoQuality;
-        convertParams.generateMipmaps = generateMipmaps;
-        convertParams.compression = compression;
-        convertParams.compressionLevelZstd = compressionLevelZstd;
-        convertParams.compressionLevelZLib = compressionLevelZLib;
-
-        try {
-            if (!framework) {
-                // This should never happen.
-                throw new Error("Framework not set");
-            }
-            if (!selectedTexture) {
-                // This should never happen.
-                throw new Error("No texture selected");
-            }
-
-            const result = await convertToKtx2Async(framework, selectedTexture, convertParams);
-            if (!result.success || !result.ktx || !result.name) {
-                throw new Error("Conversion failed.");
-            }
-
-            const ktx = result.ktx;
-            // Must create a copy since original might end up being transcoded internally.
-            const ktxCopy = ktx.createCopy();
-            try {
-                const texContainer: ITexture2DContainer = {
-                    name: result.name,
-                    ktxContainer: ktx,
-                    texture: framework.textureFactory.createFromKtx2(ktxCopy),
-                    image: null,
-                };
-                await addTexture(texContainer);
-                setOpen(false);
-                setConvertError(null);
-            } finally {
-                ktxCopy.delete();
-            }
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            console.error("Convert failed:", err);
-            setConvertError(message);
-        } finally {
-            setConverting(false);
-        }
+        void startConversion(texture, params);
     };
 
     return (
-        <>
-            <Button variant="outlined" onClick={handleOpen} disabled={!selectedTexture?.image}>
-                Convert
-            </Button>
-            <Dialog open={open}
-                    onClose={handleClose}
-                    fullWidth
-                    maxWidth="md"
-                    fullScreen={fullScreen}
-                    aria-busy={converting}
-            >
-                <DialogTitle>Convert To Ktx2</DialogTitle>
-                <DialogContent>
+        <Dialog open={open}
+                onClose={closeDialog}
+                fullWidth
+                maxWidth="md"
+                fullScreen={fullScreen}
+                aria-busy={isConverting}
+        >
+            <DialogTitle>Convert To Ktx2</DialogTitle>
+            <DialogContent>
+                {isConverting ? (
                     <Stack spacing={1.2}>
+                        <Alert severity="info">
+                            Converting {outputName}… A new conversion can start when this one finishes.
+                            You can close this dialog; the conversion keeps running in the background and
+                            the result is added to the texture list.
+                        </Alert>
+                        <LinearProgress aria-label="Converting…"/>
+                    </Stack>
+                ) : (
+                    <Stack spacing={1.2}>
+                        {!slowWarningDismissed && (
+                            <Alert severity="warning" onClose={dismissSlowWarning}
+                                   slotProps={{closeButton: {"aria-label": "Dismiss conversion time warning"}}}>
+                                Note that conversion to compressed KTX2 formats can be slow, even on fast hardware.
+                            </Alert>
+                        )}
                         <TextInputField row label="File Name" tooltip={FILE_NAME_TOOLTIP}
-                                        value={filename} onChange={setFilename}/>
+                                        value={params.fileName} onChange={field("fileName")}/>
 
                         <SelectField row label="Encode" tooltip={ENCODING_TOOLTIP}
-                                     value={encoding} options={ENCODING_OPTIONS} onChange={setEncoding}
-                                     valueTooltip={ENCODING_VALUE_TOOLTIPS[encoding]}/>
+                                     value={params.encoding} options={ENCODING_OPTIONS} onChange={field("encoding")}
+                                     valueTooltip={ENCODING_VALUE_TOOLTIPS[params.encoding]}/>
 
                         <CheckboxField row label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
-                                       value={generateMipmaps} onChange={setGenerateMipmaps}/>
+                                       value={params.generateMipmaps} onChange={field("generateMipmaps")}/>
 
                         {isUastc &&
                             <SelectField row label="UASTC Quality" tooltip={UASTC_QUALITY_TOOLTIP}
-                                         value={uastcQuality} options={QUALITY_OPTIONS} onChange={setUastcQuality}/>
+                                         value={params.uastcQuality} options={QUALITY_OPTIONS}
+                                         onChange={field("uastcQuality")}/>
                         }
 
                         {isEtc1s &&
                             <SelectField row label="ETC1S Quality" tooltip={ETC1S_QUALITY_TOOLTIP}
-                                         value={etc1sQuality} options={QUALITY_OPTIONS} onChange={setEtc1sQuality}/>
+                                         value={params.etc1sQuality} options={QUALITY_OPTIONS}
+                                         onChange={field("etc1sQuality")}/>
                         }
 
                         {(isUastc || isEtc1s) &&
-                            <CheckboxField value={align} onChange={setAlign} label="Block Align" row
+                            <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Block Align"
+                                           row
                                            tooltip={BLOCK_ALIGN_TOOLTIP}
                             />}
 
@@ -227,43 +170,60 @@ export default function ConvertDialog() {
                         {!isEtc1s && (
                             <>
                                 <SelectField row label="Compression" tooltip={COMPRESSION_TOOLTIP}
-                                             value={compression} options={COMPRESSION_OPTIONS} onChange={setCompression}
-                                             valueTooltip={COMPRESSION_VALUE_TOOLTIPS[compression]}/>
-                                {compression === KTX_COMPRESSION_ZSTANDARD &&
+                                             value={params.compression} options={COMPRESSION_OPTIONS}
+                                             onChange={field("compression")}
+                                             valueTooltip={COMPRESSION_VALUE_TOOLTIPS[params.compression]}/>
+                                {params.compression === KTX_COMPRESSION_ZSTANDARD &&
                                     <SliderField row label="Compression Level" tooltip={COMPRESSION_LEVEL_ZSTD_TOOLTIP}
                                                  min={1} max={22}
-                                                 value={compressionLevelZstd} onChange={setCompressionLevelZstd}/>
+                                                 value={params.compressionLevelZstd}
+                                                 onChange={field("compressionLevelZstd")}/>
                                 }
-                                {compression === KTX_COMPRESSION_ZLIB &&
+                                {params.compression === KTX_COMPRESSION_ZLIB &&
                                     <SliderField row label="Compression Level" tooltip={COMPRESSION_LEVEL_ZLIB_TOOLTIP}
                                                  min={1} max={9}
-                                                 value={compressionLevelZLib} onChange={setCompressionLevelZLib}/>
+                                                 value={params.compressionLevelZLib}
+                                                 onChange={field("compressionLevelZLib")}/>
                                 }
                             </>
                         )}
 
                         {/* Compression RDO is available for UASTC with ZLIB or ZSTD */}
-                        {isUastc && compression !== KTX_COMPRESSION_NONE &&
+                        {isUastc && params.compression !== KTX_COMPRESSION_NONE &&
                             <SelectField row label="RDO Quality" tooltip={RDO_QUALITY_TOOLTIP}
-                                         value={rdoQuality} options={RDO_QUALITY_OPTIONS} onChange={setRdoQuality}
-                                         valueTooltip={RDO_VALUE_TOOLTIPS[rdoQuality]}/>
+                                         value={params.rdoQuality} options={RDO_QUALITY_OPTIONS}
+                                         onChange={field("rdoQuality")}
+                                         valueTooltip={RDO_VALUE_TOOLTIPS[params.rdoQuality]}/>
                         }
 
-                        {convertError && (
-                            <Alert severity="error" onClose={() => setConvertError(null)}>
-                                {convertError}
+                        {lastError && (
+                            <Alert severity="error" onClose={clearLastError}>
+                                {lastError}
                             </Alert>
                         )}
                     </Stack>
-                    <LinearProgress aria-label="Converting…" sx={{display: converting ? 'block' : 'none', mt: 1}}/>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleClose} disabled={converting}>Cancel</Button>
-                    <Button onClick={handleConvert} variant="contained" disabled={converting}>
+                )}
+            </DialogContent>
+            <DialogActions>
+                {isConverting && (
+                    <Tooltip title={canCancel ? "" : CANNOT_CANCEL_TOOLTIP}>
+                        {/* Span so the tooltip still shows on the disabled button. */}
+                        <span>
+                            <Button color="error" onClick={cancelConversion} disabled={!canCancel || isCancelling}>
+                                {isCancelling ? "Cancelling…" : "Cancel conversion"}
+                            </Button>
+                        </span>
+                    </Tooltip>
+                )}
+                <Button onClick={closeDialog}>
+                    Close
+                </Button>
+                {!isConverting && (
+                    <Button onClick={handleConvert} variant="contained" disabled={!texture?.image}>
                         Convert
                     </Button>
-                </DialogActions>
-            </Dialog>
-        </>
+                )}
+            </DialogActions>
+        </Dialog>
     );
 }

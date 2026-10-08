@@ -1,4 +1,4 @@
-import {KtxUastcFlags} from "ris-ktx2-api";
+import {KtxUastcFlags} from "ris-ktx2";
 
 export const KTX_LOWEST_QUALITY = "Lowest";
 export const KTX_LOW_QUALITY = "Low";
