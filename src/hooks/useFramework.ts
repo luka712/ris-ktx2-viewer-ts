@@ -2,21 +2,22 @@ import {useEffect, useRef} from "react";
 import {
     Color,
     CullMode,
+    Framework,
     type GameTime,
     type IFramework,
     type IMesh,
-    type ITexture2D,
     type InspectTextureMipsMaterial,
     type OrbitCamera,
+    PowerPreferenceType,
     PrimitiveStateDescriptor,
+    TextureSamplerFilteringPreset,
     type UnlitMaterial,
     UnlitMaterialDescriptor
-} from "ris-framework-api";
-import {mat4, vec2, vec3} from "gl-matrix";
+} from "ris-framework";
+import {vec2, vec3} from "gl-matrix";
 import {View2D, View3D} from "../model/View.ts";
-import {useTextureStore} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/ViewerStore.ts";
-import {Framework, TextureSamplerFilteringPreset} from "ris-framework";
+import {selectSelectedTexture, useTextureStore} from "../store/TextureStore.ts";
+import {useViewerStore} from "../store/viewerStore.ts";
 
 /** GPU objects created once the framework is initialized. */
 interface Scene {
@@ -25,6 +26,9 @@ interface Scene {
     unlitMaterial: UnlitMaterial;
     quad: IMesh;
 }
+
+const INITIAL_CANVAS_WIDTH = 1920;
+const INITIAL_CANVAS_HEIGHT = 1080;
 
 function createScene(fw: IFramework): Scene {
     const camera = fw.cameraFactory.createOrbitCamera();
@@ -47,103 +51,99 @@ function createScene(fw: IFramework): Scene {
     return {camera, mipMaterial, unlitMaterial, quad};
 }
 
-function syncCanvasToTexture(
-    canvas: HTMLCanvasElement | null,
-    framework: IFramework | null,
-    texture: ITexture2D | null | undefined,
-) {
-    if (!texture) {
-        return;
+function disposeScene(scene: Scene) {
+    scene.camera.dispose();
+    scene.mipMaterial.dispose();
+    scene.unlitMaterial.dispose();
+    scene.quad.dispose();
+}
+
+// TODO: Framework.dispose() is a no-op (ris-framework), so a framework's render loop cannot be stopped.
+// Until it is, keep one framework per canvas and reuse it when the effect re-runs (StrictMode
+// mount → cleanup → mount), instead of starting a second framework and render loop on the same canvas.
+// Once dispose() works, dispose in the effect cleanup and drop this map.
+const frameworksByCanvas = new WeakMap<HTMLCanvasElement, IFramework>();
+
+/** Returns the canvas's framework, creating and initializing it on first use. Throws if WebGL2 is unavailable. */
+function getOrCreateFramework(canvas: HTMLCanvasElement): IFramework {
+    const existing = frameworksByCanvas.get(canvas);
+    if (existing) {
+        return existing;
     }
 
-    if (canvas) {
-        canvas.width = texture.width;
-        canvas.height = texture.height;
-    }
-    if (framework) {
-        framework.renderer.backBufferSize = vec2.fromValues(texture.width, texture.height);
-    }
+    canvas.width = INITIAL_CANVAS_WIDTH;
+    canvas.height = INITIAL_CANVAS_HEIGHT;
+    const fw: IFramework = new Framework({
+        canvas,
+        alpha: true,
+        powerPreference: PowerPreferenceType.HIGH_PERFORMANCE,
+        useKtx2: true,
+        backBufferSize: vec2.fromValues(INITIAL_CANVAS_WIDTH, INITIAL_CANVAS_HEIGHT),
+        textureFiltering: TextureSamplerFilteringPreset.TRILINEAR
+    });
+    fw.renderer.clearColor = new Color(0.8, 0.8, 0.8, 0.5);
+    // Synchronous: creates the WebGL2 context (throws if unsupported) and starts the render loop.
+    fw.initialize();
+
+    frameworksByCanvas.set(canvas, fw);
+    return fw;
 }
 
 /**
  * Creates the framework on the returned canvas ref, publishes it to ViewerStore,
  * and renders the selected texture every frame (2D mip inspection or 3D orbit view).
  * The canvas / back buffer follows the selected texture's size.
+ * If the GPU cannot be initialized, the error is published as `ViewerStore.initError`.
  */
 export function useFramework() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const frameworkRef = useRef<IFramework | null>(null);
-
-    // Resize canvas / back buffer whenever the displayed GPU texture changes
-    // (new selection, or the selected texture was recreated).
-    useEffect(() => {
-        const applyCurrent = () => {
-            syncCanvasToTexture(
-                canvasRef.current,
-                frameworkRef.current,
-                useTextureStore.getState().selectedTexture?.texture,
-            );
-        };
-
-        applyCurrent();
-        let lastTexture = useTextureStore.getState().selectedTexture?.texture;
-        return useTextureStore.subscribe(({selectedTexture}) => {
-            const texture = selectedTexture?.texture;
-            if (texture === lastTexture) {
-                return;
-            }
-            lastTexture = texture;
-            syncCanvasToTexture(canvasRef.current, frameworkRef.current, texture);
-        });
-    }, []);
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas || frameworkRef.current) {
+        if (!canvas) {
             return;
         }
 
-        let scene: Scene | null = null;
-        const modelMatrix = mat4.create();
+        let fw: IFramework;
+        let scene: Scene;
+        try {
+            fw = getOrCreateFramework(canvas);
+            scene = createScene(fw);
+        } catch (err) {
+            console.error("GPU framework initialization failed:", err);
+            useViewerStore.getState().setInitError(err instanceof Error ? err.message : String(err));
+            return;
+        }
+
+        const {camera, mipMaterial, unlitMaterial, quad} = scene;
         const previousSize = {width: 0, height: 0};
 
-        const fw: IFramework = new Framework({
-            canvas,
-            useKtx2: true,
-            backBufferSize: vec2.fromValues(1920, 1080),
-            textureFiltering: TextureSamplerFilteringPreset.TRILINEAR
-        });
-        fw.renderer.clearColor = Color.gray();
-
-        const onInitialized = () => {
-            scene = createScene(fw);
-        };
         const onUpdate = (gt: GameTime) => {
-            scene?.camera.update(gt);
-        };
-        const onRender = () => {
-            const tex = useTextureStore.getState().selectedTexture?.texture;
-            const {sampler, view, mipLevel} = useViewerStore.getState();
-            if (!tex || !scene) {
+            camera.update(gt);
+
+            const tex = selectSelectedTexture(useTextureStore.getState())?.texture;
+
+            // If previous size is same to texture size, return as there is nothing to do.
+            if (!tex || (previousSize.width === tex.width && previousSize.height === tex.height)) {
                 return;
             }
-            const {mipMaterial, unlitMaterial, quad} = scene;
 
-            // Fit the quad (and canvas aspect ratio) to the texture when its size changes.
-            if (previousSize.width !== tex.width || previousSize.height !== tex.height) {
-                previousSize.width = tex.width;
-                previousSize.height = tex.height;
+            // Fit the canvas, back buffer and quad to the texture when its size changes.
+            // Runs in the update phase, before the frame's render pass starts.
+            previousSize.width = tex.width;
+            previousSize.height = tex.height;
+            canvas.width = tex.width;
+            canvas.height = tex.height;
+            fw.renderer.backBufferSize = vec2.fromValues(tex.width, tex.height);
+        };
 
-                const aspectRatio = tex.width / tex.height;
-                const widthScale = aspectRatio > 1 ? 1 : aspectRatio;
-                const heightScale = aspectRatio > 1 ? 1 / aspectRatio : 1;
-                canvas.style.aspectRatio = aspectRatio.toString();
-
-                // Reset scale each time (do not accumulate).
-                mat4.fromScaling(modelMatrix, vec3.fromValues(widthScale, heightScale, 1));
-                mipMaterial.modelMatrix = modelMatrix;
-                unlitMaterial.modelMatrix = modelMatrix;
+        const onRender = () => {
+            const tex = selectSelectedTexture(useTextureStore.getState())?.texture;
+            if (!tex) {
+                return;
             }
+            const {sampler, view} = useViewerStore.getState();
+            const {mipLevel} = useTextureStore.getState();
 
             if (view === View2D) {
                 mipMaterial.texture = tex;
@@ -159,40 +159,16 @@ export function useFramework() {
             }
         };
 
-        fw.addOnInitializedListener(onInitialized);
         fw.addOnUpdateListener(onUpdate);
         fw.addOnRenderListener(onRender);
-
-        fw.initialize();
-        frameworkRef.current = fw;
         useViewerStore.getState().setFramework(fw);
-        syncCanvasToTexture(canvas, fw, useTextureStore.getState().selectedTexture?.texture);
 
         return () => {
-            fw.removeOnInitializedListener(onInitialized);
             fw.removeOnUpdateListener(onUpdate);
             fw.removeOnRenderListener(onRender);
-
-            scene?.camera.dispose();
-            scene?.mipMaterial.dispose();
-            scene?.unlitMaterial.dispose();
-            scene?.quad.dispose();
-            scene = null;
-
-            const {sampler} = useViewerStore.getState();
-            sampler?.dispose();
-            useViewerStore.setState({
-                framework: null,
-                sampler: undefined,
-                supportsBC3: false,
-                supportsBC7: false,
-                supportsASTC: false,
-                supportsETC2: false,
-            });
-
-            // TODO: Framework.dispose() is a no-op, so the render loop cannot be stopped from this package.
-            fw.dispose();
-            frameworkRef.current = null;
+            disposeScene(scene);
+            useViewerStore.getState().clearFramework();
+            // The framework itself stays in frameworksByCanvas (see TODO above).
         };
     }, []);
 

@@ -1,26 +1,45 @@
-import {type IFramework, type ITexture2D, TextureDescriptor, TextureFormat, TextureUsage,} from "ris-framework-api";
+import {type IFramework, type ITexture2D, TextureFormat} from "ris-framework";
 import {create} from "zustand";
+import {type IKtx2Texture, VkFormat} from "ris-ktx2";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
-import {decodeImageAsync, isDecodableImage, isKtx2File} from "../service/TextureUtilities.ts";
-import {VkFormat} from "ris-ktx2-api";
-import {useViewerStore} from "./ViewerStore.ts";
+import {
+    createTextureFromKtx2,
+    createTextureId,
+    loadTextureFromFileAsync,
+    recreateTexture,
+} from "../service/textureResources.ts";
+import {useViewerStore} from "./viewerStore.ts";
+import {makeUniqueName} from "../service/formatter.ts";
 
 /**
- * Loaded textures and the current selection.
+ * Loaded textures, the current selection (by id) and the displayed mip level.
  * Resolution, byte size, mip count, GPU format, and the mipmap checkbox are
  * read from the selected texture at render time (see `textureDetails`).
- * The framework comes from ViewerStore.
+ * The framework comes from ViewerStore; GPU resources are created in TextureResources.
  */
 interface TextureStore {
     textures: ITexture2DContainer[];
-    selectedTexture: ITexture2DContainer | null;
+    selectedId: string | null;
+    /** Mip level shown in the 2D view. Reset whenever the selection changes. */
+    mipLevel: number;
 
-    setSelectedTexture: (texture: ITexture2DContainer | null) => void;
-    addTexture: (file: File | ITexture2DContainer) => Promise<void>;
-    removeTexture: (texContainer: ITexture2DContainer) => void;
+    selectTexture: (id: string | null) => void;
+    /** Decodes / loads a picked file and selects it. Rejects on duplicates or unsupported files. */
+    addTextureFromFile: (file: File) => Promise<void>;
+    /**
+     * Adds an already-loaded KTX2 texture and takes ownership of `ktx` (deleted on failure).
+     * The name is made unique (`name (2).ktx2`, …); the name used is returned.
+     * With `select: false` the current selection and mip level are kept (unless nothing is selected).
+     */
+    addKtx2Texture: (name: string, ktx: IKtx2Texture, options?: { select?: boolean }) => string;
+    /** `name`, or `name (2)`, `name (3)`, … if a loaded or loading texture already uses it. */
+    uniqueTextureName: (name: string) => string;
+    removeTexture: (id: string) => void;
+    /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setTextureFormat: (value: TextureFormat) => void;
+    /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setGenerateMipmaps: (value: boolean) => void;
-    canGenerateMipmaps: () => boolean;
+    setMipLevel: (mipLevel: number) => void;
 }
 
 /** Display values derived from a GPU texture. Not stored separately. */
@@ -31,8 +50,6 @@ export interface TextureDetails {
     size: string;
     mipLevels: number;
 }
-
-const DEFAULT_USAGE = TextureUsage.TEXTURE_BINDING | TextureUsage.COPY_DST;
 
 function formatSizeMiB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toPrecision(3)} MiB`;
@@ -63,162 +80,112 @@ function mipmapsAllowed(container: ITexture2DContainer | null, textureFormat: Te
     return !ktx || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM;
 }
 
-function recreateTexture(
-    framework: IFramework,
-    container: ITexture2DContainer,
-    textureFormat: TextureFormat,
-    generateMipmaps: boolean,
-): ITexture2D | null {
-    const image = container.image;
-    const ktx2 = container.ktxContainer;
-    container.texture?.dispose();
-
-    if (ktx2) {
-        const desc = new TextureDescriptor();
-        desc.textureFormat = textureFormat;
-        desc.generateMipmaps = generateMipmaps;
-        // Always use copy to be able to change texture format.
-        const copy = ktx2.createCopy();
-        const texture = framework.textureFactory.createFromKtx2(copy, desc);
-        copy.delete();
-        return texture;
-    }
-
-    if (image) {
-        return framework.textureFactory.create(
-            image.baseWidth,
-            image.baseHeight,
-            image.getData(0),
-            4,
-            container.name,
-            DEFAULT_USAGE,
-            textureFormat,
-            generateMipmaps,
-        );
-    }
-
-    return null;
+/** Whether "Generate Mipmaps" applies to the texture in its current GPU format. */
+export function canGenerateMipmaps(container: ITexture2DContainer | null): boolean {
+    const textureFormat = container?.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
+    return mipmapsAllowed(container, textureFormat);
 }
 
-const getFramework = () => useViewerStore.getState().framework;
+type TextureState = Pick<TextureStore, "textures" | "selectedId">;
 
-function resetMipLevel() {
-    useViewerStore.getState().setMipLevel(0);
-}
+/** The selected texture container (stable reference from `textures`). */
+export const selectSelectedTexture = (state: TextureState): ITexture2DContainer | null =>
+    state.textures.find((item) => item.id === state.selectedId) ?? null;
 
-function clampMipLevel(mipLevels: number) {
-    const levels = Math.max(mipLevels, 1);
-    if (useViewerStore.getState().mipLevel >= levels) {
-        resetMipLevel();
+function requireFramework(): IFramework {
+    const framework = useViewerStore.getState().framework;
+    if (!framework) {
+        // This should never happen
+        throw new Error("Framework has not been initialized");
     }
+    return framework;
 }
+
+/** File names currently being loaded, so a quick double pick is still rejected as a duplicate. */
+const pendingFileNames = new Set<string>();
 
 export const useTextureStore = create<TextureStore>((set, get) => {
-    const selectTexture = (tex: ITexture2DContainer | null) => {
-        if (get().selectedTexture === tex) {
-            return;
-        }
-        set({selectedTexture: tex});
-        resetMipLevel();
+    const addContainer = (container: ITexture2DContainer, select = true) => {
+        set((state) => select || state.selectedId === null
+            ? {textures: [...state.textures, container], selectedId: container.id, mipLevel: 0}
+            : {textures: [...state.textures, container]});
     };
 
-    const publishTexture = (previous: ITexture2DContainer, texture: ITexture2D | null) => {
-        const next: ITexture2DContainer = {...previous, texture};
-        const {textures, selectedTexture} = get();
-        set({
-            textures: textures.map((item) => item === previous ? next : item),
-            selectedTexture: selectedTexture === previous ? next : selectedTexture,
-        });
-        clampMipLevel(texture?.mipLevels ?? 1);
+    const isNameTaken = (name: string) =>
+        pendingFileNames.has(name) || get().textures.some((item) => item.name === name);
+
+    /** Replaces the container's GPU texture (disposing the old one) and clamps the mip level. */
+    const replaceTexture = (container: ITexture2DContainer, texture: ITexture2D | null) => {
+        container.texture?.dispose();
+        const next: ITexture2DContainer = {...container, texture};
+        const levels = Math.max(texture?.mipLevels ?? 1, 1);
+        set((state) => ({
+            textures: state.textures.map((item) => item.id === container.id ? next : item),
+            mipLevel: state.mipLevel >= levels ? 0 : state.mipLevel,
+        }));
     };
 
     return {
         textures: [],
-        selectedTexture: null,
+        selectedId: null,
+        mipLevel: 0,
 
-        setSelectedTexture: (tex) => selectTexture(tex),
+        selectTexture: (id) => {
+            if (get().selectedId === id) {
+                return;
+            }
+            set({selectedId: id, mipLevel: 0});
+        },
 
-        removeTexture: (texture) => {
-            const {textures, selectedTexture} = get();
-            const nextTextures = textures.filter((item) => item !== texture);
-            const removingSelection = selectedTexture === texture;
+        removeTexture: (id) => {
+            const {textures, selectedId} = get();
+            const texture = textures.find((item) => item.id === id);
+            if (!texture) {
+                return;
+            }
+            const nextTextures = textures.filter((item) => item.id !== id);
 
             // TODO: The GPU texture is disposed here; the source image and KTX2 container are not.
             texture.texture?.dispose();
-            set({
-                textures: nextTextures,
-                ...(removingSelection ? {selectedTexture: nextTextures[0] ?? null} : {}),
-            });
+            set(selectedId === id
+                ? {textures: nextTextures, selectedId: nextTextures[0]?.id ?? null, mipLevel: 0}
+                : {textures: nextTextures});
+        },
 
-            if (removingSelection) {
-                resetMipLevel();
+        addTextureFromFile: async (file) => {
+            const framework = requireFramework();
+            if (isNameTaken(file.name)) {
+                throw new Error(`Texture already added: ${file.name}`);
+            }
+
+            pendingFileNames.add(file.name);
+            try {
+                const loaded = await loadTextureFromFileAsync(framework, file);
+                addContainer({id: createTextureId(), ...loaded});
+            } finally {
+                pendingFileNames.delete(file.name);
             }
         },
 
-        addTexture: async (file) => {
-            const framework = getFramework();
-
-            if (!framework) {
-                // This should never happen
-                throw new Error("Framework has not been initialized");
+        addKtx2Texture: (name, ktx, options) => {
+            let texture: ITexture2D;
+            try {
+                texture = createTextureFromKtx2(requireFramework(), ktx);
+            } catch (err) {
+                ktx.delete();
+                throw err;
             }
-
-            if (file instanceof File) {
-                if (get().textures.some((item) => item.name === file.name)) {
-                    throw new Error(`Texture already added: ${file.name}`);
-                }
-
-                let container: ITexture2DContainer;
-
-                if (isDecodableImage(file)) {
-                    const image = await decodeImageAsync(framework, file);
-                    const texture = framework.textureFactory.create(
-                        image.baseWidth,
-                        image.baseHeight,
-                        image.getData(0)!,
-                        image.channels,
-                        file.name,
-                    );
-
-                    container = {
-                        name: file.name,
-                        texture,
-                        image,
-                        ktxContainer: null,
-                    };
-                } else if (isKtx2File(file)) {
-                    const ktx = await framework.ktx2Factory!.loadAsync(file);
-                    const copy = ktx.createCopy();
-                    const texture = framework.textureFactory.createFromKtx2(copy);
-                    copy.delete();
-
-                    container = {
-                        name: file.name,
-                        texture,
-                        ktxContainer: ktx,
-                        image: null,
-                    };
-                } else {
-                    throw new Error(`Unsupported file type: ${file.name}`);
-                }
-
-                set((state) => ({
-                    textures: [...state.textures, container],
-                    selectedTexture: container,
-                }));
-                resetMipLevel();
-            } else {
-                set((state) => ({
-                    textures: [...state.textures, file],
-                    selectedTexture: file,
-                }));
-                resetMipLevel();
-            }
+            const uniqueName = makeUniqueName(name, isNameTaken);
+            addContainer({id: createTextureId(), name: uniqueName, texture, ktxContainer: ktx, image: null},
+                options?.select ?? true);
+            return uniqueName;
         },
+
+        uniqueTextureName: (name) => makeUniqueName(name, isNameTaken),
 
         setTextureFormat: (value) => {
-            const framework = getFramework();
-            const selected = get().selectedTexture;
+            const framework = useViewerStore.getState().framework;
+            const selected = selectSelectedTexture(get());
             if (!framework || !selected) {
                 return;
             }
@@ -230,12 +197,12 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 value,
                 generateMipmaps && mipmapsAllowed(selected, value),
             );
-            publishTexture(selected, texture);
+            replaceTexture(selected, texture);
         },
 
         setGenerateMipmaps: (value) => {
-            const framework = getFramework();
-            const selected = get().selectedTexture;
+            const framework = useViewerStore.getState().framework;
+            const selected = selectSelectedTexture(get());
             if (!framework || !selected) {
                 return;
             }
@@ -247,13 +214,12 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 textureFormat,
                 value && mipmapsAllowed(selected, textureFormat),
             );
-            publishTexture(selected, texture);
+            replaceTexture(selected, texture);
         },
 
-        canGenerateMipmaps: () => {
-            const selected = get().selectedTexture;
-            const textureFormat = selected?.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
-            return mipmapsAllowed(selected, textureFormat);
-        },
+        setMipLevel: (mipLevel) => set({mipLevel}),
     };
 });
+
+/** The selected texture container, or null. */
+export const useSelectedTexture = () => useTextureStore(selectSelectedTexture);

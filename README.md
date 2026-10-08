@@ -17,12 +17,10 @@ Browser viewer for KTX2 textures. Load a PNG, JPEG, WebP, or KTX2 file, inspect 
 
 The viewer depends on these packages:
 
-- [ris-framework](https://github.com/luka712/ris-framework-ts) — WebGL2 framework used to create the device, textures, materials, and render loop
-- [ris-framework-api](https://github.com/luka712/ris-framework-api-ts) — shared framework types (`IFramework`, `TextureFormat`, samplers, and the rest)
-- [ris-ktx2](https://github.com/luka712/ris-ktx2-ts) — KTX2 load, create, and Basis encode runtime
-- [ris-ktx2-api](https://github.com/luka712/ris-ktx2-api-ts) — KTX2 types and enumerations such as `VkFormat`
+- [ris-framework](https://github.com/luka712/ris-framework-ts) — WebGL2 framework used to create the device, textures, materials, and render loop. It also exports the shared framework types (`IFramework`, `TextureFormat`, samplers, and the rest) that used to live in ris-framework-api.
+- [ris-ktx2](https://github.com/luka712/ris-ktx2-ts) — KTX2 load, create, and Basis encode runtime. It also exports the KTX2 types and enumerations such as `VkFormat` that used to live in ris-ktx2-api.
 
-`ris-framework` and `ris-ktx2` are direct dependencies. The app imports the two API packages as well; they are installed with those dependencies.
+`ris-framework` and `ris-ktx2` are the only ris dependencies; the app imports everything from them.
 
 A browser with WebGL2 is required.
 

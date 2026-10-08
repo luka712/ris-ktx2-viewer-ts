@@ -1,6 +1,6 @@
 import AddFileButton from "../components/AddFileButton.tsx";
 import TextureList from "../components/TextureList.tsx";
-import ConvertDialog from "../dialogs/ConvertDialog.tsx";
+import ConvertButton from "../components/ConvertButton.tsx";
 
 /** Sidebar "Files" tab. */
 export function TexturesListView() {
@@ -8,7 +8,7 @@ export function TexturesListView() {
         <>
             <AddFileButton/>
             <TextureList/>
-            <ConvertDialog/>
+            <ConvertButton/>
         </>
     );
 }

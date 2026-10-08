@@ -1,4 +1,4 @@
-import {TextureFormat} from "ris-framework-api";
+import {TextureFormat} from "ris-framework";
 
 const TEXTURE_FORMAT_LABELS: Partial<Record<TextureFormat, string>> = {
     [TextureFormat.UNDEFINED]: "UNDEFINED",

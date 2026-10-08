@@ -14,8 +14,8 @@ import {useTextureStore} from "../store/TextureStore.ts";
  */
 export default function TextureList() {
     const textures = useTextureStore((state) => state.textures);
-    const selectedTexture = useTextureStore((state) => state.selectedTexture);
-    const setSelectedTexture = useTextureStore((state) => state.setSelectedTexture);
+    const selectedId = useTextureStore((state) => state.selectedId);
+    const selectTexture = useTextureStore((state) => state.selectTexture);
     const removeTexture = useTextureStore((state) => state.removeTexture);
 
     const [contextMenu, setContextMenu] = useState<{
@@ -24,26 +24,12 @@ export default function TextureList() {
         itemId: string;
     } | null>(null);
 
-    const listTextures = textures.map((tex, index) => ({
-        id: `${tex.name}-${index}`,
-        label: `${index + 1}. ${tex.name}`,
-        texture: tex,
-    }));
-
-    const selectedItemId =
-        listTextures.find((item) => item.texture === selectedTexture)?.id ?? null;
-
     const handleSelectionChange = (
         _event: React.SyntheticEvent | null,
         itemId: string | null,
     ) => {
-        if (itemId === null) {
-            return;
-        }
-
-        const selected = listTextures.find((tex) => tex.id === itemId);
-        if (selected) {
-            setSelectedTexture(selected.texture);
+        if (itemId !== null) {
+            selectTexture(itemId);
         }
     };
 
@@ -59,15 +45,9 @@ export default function TextureList() {
     const handleCloseContextMenu = () => setContextMenu(null);
 
     const handleRemove = () => {
-        if (contextMenu === null) {
-            return;
+        if (contextMenu !== null) {
+            removeTexture(contextMenu.itemId);
         }
-
-        const selected = listTextures.find((tex) => tex.id === contextMenu.itemId);
-        if (selected) {
-            removeTexture(selected.texture);
-        }
-
         handleCloseContextMenu();
     };
 
@@ -85,21 +65,21 @@ export default function TextureList() {
 
             <Divider/>
 
-            {listTextures.length === 0 ? (
+            {textures.length === 0 ? (
                 <Typography sx={{p: 2, opacity: 0.6}} variant="body2">
                     No textures loaded
                 </Typography>
             ) : (
                 <SimpleTreeView
                     aria-label="Loaded textures"
-                    selectedItems={selectedItemId}
+                    selectedItems={selectedId}
                     onSelectedItemsChange={handleSelectionChange}
                 >
-                    {listTextures.map((tex) => (
+                    {textures.map((tex, index) => (
                         <TreeItem
                             key={tex.id}
                             itemId={tex.id}
-                            label={tex.label}
+                            label={`${index + 1}. ${tex.name}`}
                             onContextMenu={(event) => handleContextMenu(event, tex.id)}
                         />
                     ))}

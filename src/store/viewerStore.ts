@@ -1,31 +1,29 @@
-import {type IFramework, type ISampler, MipMapSamplerFilter, SamplerDescriptor, SamplerFilter} from "ris-framework-api";
+import {type IFramework, type ISampler, MipMapSamplerFilter, SamplerDescriptor, SamplerFilter} from "ris-framework";
 import {create} from "zustand";
 import {View2D} from "../model/View.ts";
 
 /**
- * Framework instance, GPU capabilities and viewer display settings
- * (view mode, sampler filter, displayed mip level).
+ * Framework instance and viewer display settings (view mode, sampler filter).
+ * GPU capabilities are read from `framework.graphicsDevice.features`.
  *
- * The framework is set once by App; other stores/services read it via
+ * The framework is set by useFramework; other stores/services read it via
  * `useViewerStore.getState().framework`.
  */
 interface ViewerStore {
     framework: IFramework | null;
-
-    supportsBC7: boolean;
-    supportsASTC: boolean;
-    supportsETC2: boolean;
-    supportsBC3: boolean;
+    /** Set when the GPU framework could not be created (e.g. no WebGL2). */
+    initError: string | null;
 
     view: string;
     filter: SamplerFilter;
     sampler: ISampler | undefined;
-    mipLevel: number;
 
     setFramework: (framework: IFramework) => void;
+    /** Disposes the sampler and forgets the framework (viewport unmounted). */
+    clearFramework: () => void;
+    setInitError: (message: string) => void;
     setView: (view: string) => void;
     setFilter: (filter: SamplerFilter) => void;
-    setMipLevel: (mipLevel: number) => void;
 }
 
 function createSampler(
@@ -44,30 +42,27 @@ function createSampler(
 
 export const useViewerStore = create<ViewerStore>((set, get) => ({
     framework: null,
-
-    supportsBC7: false,
-    supportsASTC: false,
-    supportsETC2: false,
-    supportsBC3: false,
+    initError: null,
 
     view: View2D,
     filter: SamplerFilter.LINEAR,
     sampler: undefined,
-    mipLevel: 0,
 
     setFramework: (framework) => {
-        const features = framework?.graphicsDevice.features;
         const {filter, sampler} = get();
-
         set({
             framework,
-            supportsBC3: features?.supportsTextureCompressionS3TC,
-            supportsBC7: features?.supportsTextureCompressionBC,
-            supportsASTC: features?.supportsTextureCompressionASTC,
-            supportsETC2: features?.supportsTextureCompressionETC2,
+            initError: null,
             sampler: createSampler(framework, filter, sampler),
         });
     },
+
+    clearFramework: () => {
+        get().sampler?.dispose();
+        set({framework: null, sampler: undefined});
+    },
+
+    setInitError: (initError) => set({initError}),
 
     setView: (view) => set({view}),
 
@@ -82,6 +77,4 @@ export const useViewerStore = create<ViewerStore>((set, get) => ({
             sampler: createSampler(framework, filter, sampler),
         });
     },
-
-    setMipLevel: (mipLevel) => set({mipLevel}),
 }));

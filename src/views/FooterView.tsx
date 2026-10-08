@@ -1,6 +1,6 @@
 import {Paper, Stack, Typography} from "@mui/material";
-import {type IKtx2Texture, VkFormat } from "ris-ktx2-api";
-import {textureDetails, useTextureStore} from "../store/TextureStore.ts";
+import {type IKtx2Texture, VkFormat } from "ris-ktx2";
+import {textureDetails, useSelectedTexture} from "../store/TextureStore.ts";
 
 function FooterStat({label, value}: { label: string; value: string | number }) {
     return (
@@ -26,7 +26,7 @@ function ktx2FormatLabel(ktx2: IKtx2Texture): string {
  * Footer strip showing selected texture metrics.
  */
 export function FooterView() {
-    const selectedTexture = useTextureStore((store) => store.selectedTexture);
+    const selectedTexture = useSelectedTexture();
     const {resolution, size: memory, mipLevels} = textureDetails(selectedTexture?.texture);
 
     const ktx2 = selectedTexture?.ktxContainer;

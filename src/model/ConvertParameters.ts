@@ -12,4 +12,5 @@ export class ConvertParameters {
     public compression = "";
     public compressionLevelZLib = 0;
     public compressionLevelZstd = 0;
+    public threadCount = -1;
 }
