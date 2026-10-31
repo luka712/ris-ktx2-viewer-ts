@@ -20,7 +20,7 @@
     "react-dropzone": "^19.1.1",
     "reflect-metadata": "^0.2.2",
     "ris-framework": "^0.1.0-dev.9",
-    "ris-ktx2": "^0.1.0",
+    "ris-ktx2": "^0.2.0-dev.13",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

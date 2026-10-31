@@ -47,7 +47,7 @@ export default function AddFileButton() {
             >
                 Add File
             </Button>
-            {/* TODO: react-dropzone is a dependency, but files can only be added with this picker. */}
+            {/* Files can also be dropped on the viewport (see Dropzone). */}
             <input
                 ref={inputRef}
                 type="file"

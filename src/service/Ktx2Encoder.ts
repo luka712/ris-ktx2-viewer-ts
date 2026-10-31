@@ -1,9 +1,18 @@
 // Shared KTX2 encode steps used by both the Web Worker and the main-thread fallback.
 // Must stay DOM-free: it is type-checked against the WebWorker lib (tsconfig.worker.json).
 
-import type {IKtx2Texture, IKtxBasisParams} from "ris-ktx2";
+import {
+    AstcQualityLevel,
+    type IKtx2Texture,
+    type IKtxAstcParams,
+    type IKtxBasisParams,
+    KtxAstcBlockDimension,
+    KtxAstcEncoderMode,
+    KtxErrorCode,
+} from "ris-ktx2";
 import type {ConvertParameters} from "../model/ConvertParameters.ts";
 import {
+    KTX_ENCODING_ASTC,
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
     KTX_ENCODING_RGBA,
@@ -47,11 +56,35 @@ export function buildBasisParams(convertParameters: ConvertParameters, verbose: 
     return basisParams;
 }
 
+/** ASTC encoder parameters for the ASTC encoding, or null for other encodings. */
+export function buildAstcParams(convertParameters: ConvertParameters, verbose: boolean): IKtxAstcParams | null {
+    if (convertParameters.encoding !== KTX_ENCODING_ASTC) {
+        return null;
+    }
+    const blockDimension = KtxAstcBlockDimension[`D${convertParameters.astcBlockSize}` as keyof typeof KtxAstcBlockDimension];
+    if (blockDimension === undefined) {
+        throw new Error(`Unsupported ASTC block size: ${convertParameters.astcBlockSize}`);
+    }
+    const mode = KtxAstcEncoderMode[convertParameters.astcMode as keyof typeof KtxAstcEncoderMode];
+    if (mode === undefined) {
+        throw new Error(`Unsupported ASTC mode: ${convertParameters.astcMode}`);
+    }
+    return {
+        blockDimension,
+        mode,
+        qualityLevel: convertParameters.astcQuality as AstcQualityLevel,
+        normalMap: convertParameters.astcNormalMap,
+        threadCount: resolveThreadCount(convertParameters.threadCount),
+        verbose,
+    };
+}
+
 // TODO: compressBasis / deflateZstd / deflateZlib return a KtxErrorCode that is ignored here (as before),
 // so a failed encode is not reported. Check the codes and throw once the success value is confirmed.
 /**
  * Basis-encodes (UASTC / ETC1S) and then supercompresses (Zstd / ZLib) the texture in place.
- * ETC1S already uses its own compression, so supercompression applies to UASTC and RGBA only.
+ * ASTC-encodes (needs the uncompressed RGBA8 input the converter creates).
+ * ETC1S already uses its own compression, so supercompression applies to UASTC, ASTC and RGBA only.
  */
 export function encodeKtx2(tex: IKtx2Texture, params: ConvertParameters, verbose: boolean): void {
     const basisParams = buildBasisParams(params, verbose);
@@ -59,7 +92,16 @@ export function encodeKtx2(tex: IKtx2Texture, params: ConvertParameters, verbose
         tex.compressBasis(basisParams);
     }
 
+    const astcParams = buildAstcParams(params, verbose);
+    if (astcParams) {
+        const result = tex.compressAstc(astcParams);
+        if (result !== KtxErrorCode.SUCCESS) {
+            throw new Error(`ASTC encoding failed (${KtxErrorCode[result] ?? result})`);
+        }
+    }
+
     const supercompressible = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC
+        || params.encoding === KTX_ENCODING_ASTC
         || params.encoding === KTX_ENCODING_RGBA;
     if (!supercompressible) {
         return;

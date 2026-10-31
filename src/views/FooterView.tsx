@@ -1,6 +1,7 @@
 import {Paper, Stack, Typography} from "@mui/material";
-import {type IKtx2Texture, VkFormat } from "ris-ktx2";
-import {textureDetails, useSelectedTexture} from "../store/TextureStore.ts";
+import {VkFormat} from "ris-ktx2";
+import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
+import {formatFileSize, textureDetails, useSelectedTexture} from "../store/TextureStore.ts";
 
 function FooterStat({label, value}: { label: string; value: string | number }) {
     return (
@@ -15,7 +16,19 @@ function FooterStat({label, value}: { label: string; value: string | number }) {
     );
 }
 
-function ktx2FormatLabel(ktx2: IKtx2Texture): string {
+/**
+ * sRGB / Linear from the VkFormat name. Basis data reports UNDEFINED and the framework's ris-ktx2 0.1
+ * does not expose the DFD transfer function, so it shows "—".
+ */
+function ktx2ColorSpace(ktx2: FrameworkKtx2Texture): string {
+    if (ktx2.vkFormat === VkFormat.UNDEFINED) {
+        // TODO: Show sRGB/Linear for Basis textures once the DFD transfer function is exposed.
+        return "—";
+    }
+    return (VkFormat[ktx2.vkFormat] ?? "").includes("SRGB") ? "sRGB" : "Linear";
+}
+
+function ktx2FormatLabel(ktx2: FrameworkKtx2Texture): string {
     if (ktx2.vkFormat === VkFormat.UNDEFINED) {
         return ktx2.needsTranscoding ? "Universal Basis" : "—";
     }
@@ -46,7 +59,9 @@ export function FooterView() {
                 <FooterStat label="Resolution" value={resolution}/>
                 <FooterStat label="Mip Levels" value={mipLevels}/>
                 <FooterStat label="GPU Memory" value={memory}/>
+                <FooterStat label="File Size" value={formatFileSize(selectedTexture?.fileSize)}/>
                 {ktx2 && <FooterStat label="Ktx2 Format" value={ktx2FormatLabel(ktx2)}/>}
+                {ktx2 && <FooterStat label="Color Space" value={ktx2ColorSpace(ktx2)}/>}
             </Stack>
         </Paper>
     );

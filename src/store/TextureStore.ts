@@ -1,6 +1,7 @@
 import {type IFramework, type ITexture2D, TextureFormat} from "ris-framework";
 import {create} from "zustand";
-import {type IKtx2Texture, VkFormat} from "ris-ktx2";
+import {VkFormat} from "ris-ktx2";
+import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {
     createTextureFromKtx2,
@@ -31,7 +32,7 @@ interface TextureStore {
      * The name is made unique (`name (2).ktx2`, …); the name used is returned.
      * With `select: false` the current selection and mip level are kept (unless nothing is selected).
      */
-    addKtx2Texture: (name: string, ktx: IKtx2Texture, options?: { select?: boolean }) => string;
+    addKtx2Texture: (name: string, ktx: FrameworkKtx2Texture, options?: { select?: boolean; fileSize?: number }) => string;
     /** `name`, or `name (2)`, `name (3)`, … if a loaded or loading texture already uses it. */
     uniqueTextureName: (name: string) => string;
     removeTexture: (id: string) => void;
@@ -53,6 +54,14 @@ export interface TextureDetails {
 
 function formatSizeMiB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toPrecision(3)} MiB`;
+}
+
+/** Source file size: KiB below 1 MiB, otherwise MiB (same precision as GPU memory); "—" if unknown. */
+export function formatFileSize(bytes: number | undefined): string {
+    if (bytes === undefined) {
+        return "—";
+    }
+    return bytes < 1024 * 1024 ? `${(bytes / 1024).toPrecision(3)} KiB` : formatSizeMiB(bytes);
 }
 
 export function textureDetails(texture: ITexture2D | null | undefined): TextureDetails {
@@ -77,7 +86,10 @@ export function textureDetails(texture: ITexture2D | null | undefined): TextureD
 
 function mipmapsAllowed(container: ITexture2DContainer | null, textureFormat: TextureFormat): boolean {
     const ktx = container?.ktxContainer;
-    return !ktx || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM;
+    // Uncompressed RGBA8, linear or sRGB (WebGL2 can generate mipmaps for SRGB8_ALPHA8).
+    return !ktx
+        || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || ktx.vkFormat === VkFormat.R8G8B8A8_SRGB
+        || textureFormat === TextureFormat.RGBA_8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM_SRGB;
 }
 
 /** Whether "Generate Mipmaps" applies to the texture in its current GPU format. */
@@ -176,7 +188,7 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 throw err;
             }
             const uniqueName = makeUniqueName(name, isNameTaken);
-            addContainer({id: createTextureId(), name: uniqueName, texture, ktxContainer: ktx, image: null},
+            addContainer({id: createTextureId(), name: uniqueName, texture, ktxContainer: ktx, image: null, fileSize: options?.fileSize},
                 options?.select ?? true);
             return uniqueName;
         },

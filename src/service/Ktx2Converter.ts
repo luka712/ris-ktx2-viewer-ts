@@ -1,4 +1,5 @@
-import {type IKtx2Texture, type IKtxTextureCreateInfo, KtxCreateStorage, VkFormat} from "ris-ktx2";
+import {type IKtxTextureCreateInfo, Ktx2Factory, KtxCreateStorage, VkFormat} from "ris-ktx2";
+import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
 import {AlignUtilities, type IFramework, type RawImageData} from "ris-framework";
 import {vec2} from "gl-matrix";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
@@ -8,13 +9,17 @@ import {downloadKtx2} from "./textureUtilities.ts";
 import {changeFileExtension} from "./formatter.ts";
 import {encodeKtx2, isBasisEncoding, toStandaloneBytes} from "./Ktx2Encoder.ts";
 import {mipLevelCount} from "./mipLevels.ts";
+import {parseAstcBlockSize} from "./astcFormats.ts";
+import {KTX_ENCODING_ASTC} from "../model/Ktx2EncodingConstants.ts";
 import type {KtxWorkerConvertRequest, KtxWorkerResponse} from "./ktxWorkerProtocol.ts";
 import KtxWorker from "./ktx.worker.ts?worker";
 
 export interface ConvertResult {
     success: boolean,
-    ktx: IKtx2Texture | null,
-    name: string | null
+    ktx: FrameworkKtx2Texture | null,
+    name: string | null,
+    /** Byte length of the encoded KTX2 file. */
+    fileSize?: number,
 }
 
 /** The KTX worker could not start (module load or libktx init). Safe to fall back to the main thread. */
@@ -65,8 +70,19 @@ type EncodedKtx2 = {
 
 const VERBOSE = import.meta.env.DEV;
 
+/** Block footprint to align the base level to, or null when the encoding has no blocks (RGBA). */
+function alignmentBlock(convertParameters: ConvertParameters): { width: number; height: number } | null {
+    if (isBasisEncoding(convertParameters.encoding)) {
+        return {width: 4, height: 4};
+    }
+    if (convertParameters.encoding === KTX_ENCODING_ASTC) {
+        return parseAstcBlockSize(convertParameters.astcBlockSize);
+    }
+    return null;
+}
+
 /**
- * Block-align Basis formats to 4×4 and compute mip count when requested.
+ * Block-align Basis formats to 4×4 and ASTC to its block size and compute mip count when requested.
  * Mip count is always derived when generateMipmaps is on (not only after a resize).
  */
 async function prepareSourceImageAsync(
@@ -84,15 +100,18 @@ async function prepareSourceImageAsync(
     let baseWidth = image.baseWidth;
     let baseHeight = image.baseHeight;
 
-    if (convertParameters.blockAlign && isBasisEncoding(encoding)) {
-        if (baseWidth % 4 !== 0 || baseHeight % 4 !== 0) {
-            baseWidth = AlignUtilities.align(baseWidth, 4);
-            baseHeight = AlignUtilities.align(baseHeight, 4);
+    // Basis formats use 4×4 blocks; ASTC uses the selected (possibly non-square) block footprint.
+    const block = alignmentBlock(convertParameters);
+    if (convertParameters.blockAlign && block) {
+        if (baseWidth % block.width !== 0 || baseHeight % block.height !== 0) {
+            baseWidth = AlignUtilities.align(baseWidth, block.width);
+            baseHeight = AlignUtilities.align(baseHeight, block.height);
             sourceImage = await fw.imageProcessor.resizeAsync(image, vec2.fromValues(baseWidth, baseHeight));
         }
     }
 
-    // Total level count, base included. Basis block formats stop at 4 on the smaller side; RGBA goes to 1.
+    // Total level count, base included. Basis block formats stop at 4 on the smaller side; RGBA and ASTC
+    // go to 1 (ASTC pads partial blocks, so levels smaller than the block footprint are valid).
     const mipLevelsToGen = convertParameters.generateMipmaps
         ? mipLevelCount(baseWidth, baseHeight, isBasisEncoding(encoding) ? 4 : 1)
         : 1;
@@ -126,11 +145,15 @@ function disposePrepared(prepared: PreparedSource | null) {
     }
 }
 
-function createInfoFor(prepared: PreparedSource): IKtxTextureCreateInfo {
+// TODO: Mipmaps come from ris-framework generateMipmapsAsync, which filters the stored (sRGB-encoded) values
+// directly, so sRGB mips are not gamma-correct (slightly dark). Neither ris-framework nor ris-ktx2 offers a
+// linear-space mip filter; add one (decode to linear, filter, re-encode) if quality matters.
+function createInfoFor(prepared: PreparedSource, srgb: boolean): IKtxTextureCreateInfo {
     return {
         baseWidth: prepared.baseWidth,
         baseHeight: prepared.baseHeight,
-        vkFormat: VkFormat.R8G8B8A8_UNORM,
+        // The source format decides the color space of every encoding (raw, Basis DFD transfer, ASTC block format).
+        vkFormat: srgb ? VkFormat.R8G8B8A8_SRGB : VkFormat.R8G8B8A8_UNORM,
         numLevels: prepared.sourceImage.numLevels,
     };
 }
@@ -153,7 +176,7 @@ function collectMipLevelBuffers(fw: IFramework, sourceImage: RawImageData): Arra
 }
 
 /** Reloads written KTX2 bytes as a texture for the list (same rule for worker and main-thread paths). */
-function loadEncodedKtx2(fw: IFramework, bytes: Uint8Array<ArrayBuffer>): IKtx2Texture {
+function loadEncodedKtx2(fw: IFramework, bytes: Uint8Array<ArrayBuffer>): FrameworkKtx2Texture {
     if (!fw.ktx2Factory) {
         throw new Error("KTX2 factory not available");
     }
@@ -244,7 +267,7 @@ function encodeInWorkerAsync(
     const request: KtxWorkerConvertRequest = {
         type: "convert",
         id: ++nextRequestId,
-        ktxCreateInfo: createInfoFor(prepared),
+        ktxCreateInfo: createInfoFor(prepared, convertParameters.srgb),
         dataPerMipLevel,
         convertParameters,
         verbose: VERBOSE,
@@ -295,18 +318,33 @@ function encodeInWorkerAsync(
     });
 }
 
+let encoderFactoryPromise: Promise<Ktx2Factory> | null = null;
+
+/**
+ * The viewer's own ris-ktx2 0.2 factory for main-thread encoding (the framework's factory is 0.1 and
+ * has no compressAstc). Initialized lazily, so libktx only starts on the main thread for the fallback.
+ */
+function getEncoderFactoryAsync(): Promise<Ktx2Factory> {
+    encoderFactoryPromise ??= (async () => {
+        const factory = new Ktx2Factory();
+        await factory.initializeAsync();
+        return factory;
+    })();
+    encoderFactoryPromise.catch(() => {
+        encoderFactoryPromise = null;
+    });
+    return encoderFactoryPromise;
+}
+
 /** Encodes on the main thread (blocks the UI while libktx runs). Used as the fallback. */
-function encodeOnMainThread(
+async function encodeOnMainThreadAsync(
     fw: IFramework,
     prepared: PreparedSource,
     convertParameters: ConvertParameters,
-): EncodedKtx2 {
-    if (!fw.ktx2Factory) {
-        throw new Error("KTX2 factory not available");
-    }
-
-    const createInfo = createInfoFor(prepared);
-    const tex = fw.ktx2Factory.create(createInfo, KtxCreateStorage.ALLOC_STORAGE);
+): Promise<EncodedKtx2> {
+    const factory = await getEncoderFactoryAsync();
+    const createInfo = createInfoFor(prepared, convertParameters.srgb);
+    const tex = factory.create(createInfo, KtxCreateStorage.ALLOC_STORAGE);
     try {
         for (let i = 0; i < prepared.sourceImage.numLevels; i++) {
             tex.setImageFromMemory(i, 0, 0, mipLevelBytes(fw, prepared.sourceImage, i));
@@ -334,6 +372,7 @@ function finishConversion(
         success: true,
         ktx: loadEncodedKtx2(fw, encoded.bytes),
         name,
+        fileSize: encoded.bytes.byteLength,
     };
 }
 
@@ -399,7 +438,7 @@ export async function convertToKtx2UsingWorkerAsync(
             onMainThreadFallback?.();
             await yieldToBrowserAsync();
             signal?.throwIfAborted();
-            const encoded = encodeOnMainThread(fw, prepared, convertParameters);
+            const encoded = await encodeOnMainThreadAsync(fw, prepared, convertParameters);
             return finishConversion(fw, encoded, resolveOutputName);
         } finally {
             window.clearTimeout(readyTimeoutId);
@@ -431,7 +470,7 @@ export async function convertToKtx2Async(
 ): Promise<ConvertResult> {
     const prepared = await prepareSourceImageAsync(fw, selectedTexture, convertParameters);
     try {
-        return finishConversion(fw, encodeOnMainThread(fw, prepared, convertParameters));
+        return finishConversion(fw, await encodeOnMainThreadAsync(fw, prepared, convertParameters));
     } finally {
         disposePrepared(prepared);
     }

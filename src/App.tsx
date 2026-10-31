@@ -3,12 +3,20 @@ import './App.css'
 import {SidebarView} from "./views/SidebarView.tsx";
 import {ViewportView} from "./views/ViewportView.tsx";
 import {PropertiesView} from "./views/PropertiesView.tsx";
+import {HeaderView} from "./views/HeaderView.tsx";
 import {FooterView} from "./views/FooterView.tsx";
 import {ErrorBoundary} from "./components/ErrorBoundary.tsx";
 import {ConvertNotifications} from "./components/ConvertNotifications.tsx";
+import Dropzone from "./components/Dropzone.tsx";
 
-const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-const theme = createTheme({cssVariables: true, palette: {mode: isDark ? 'dark' : 'light'}});
+/** Keys shared with the inline script in index.html that applies the scheme before first paint. */
+export const THEME_MODE_STORAGE_KEY = "ris-ktx2-viewer.themeMode";
+const COLOR_SCHEME_STORAGE_KEY = "ris-ktx2-viewer.colorScheme";
+
+const theme = createTheme({
+    cssVariables: {colorSchemeSelector: "data"},
+    colorSchemes: {light: true, dark: true},
+});
 
 /**
  * Page layout: sidebar | viewport | properties, footer below.
@@ -16,9 +24,15 @@ const theme = createTheme({cssVariables: true, palette: {mode: isDark ? 'dark' :
  */
 function App() {
     return (
-        <ThemeProvider theme={theme}>
+        <ThemeProvider
+            theme={theme}
+            defaultMode="system"
+            modeStorageKey={THEME_MODE_STORAGE_KEY}
+            colorSchemeStorageKey={COLOR_SCHEME_STORAGE_KEY}
+        >
             <ErrorBoundary title="Something went wrong">
                 <div className="app" style={{height: '100vh', display: 'flex', flexDirection: 'column'}}>
+                        <HeaderView/>
                     <Paper sx={{flex: 1, minHeight: 0, overflowY: {xs: 'auto', md: 'hidden'}, overflowX: 'hidden'}}>
                         <Box sx={{overflowY: 'auto', height: '100%'}}>
                             <Stack direction="column">
@@ -31,9 +45,11 @@ function App() {
                                         <SidebarView/>
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 12, md: 6}}>
-                                        <ErrorBoundary title="The viewport crashed">
-                                            <ViewportView/>
-                                        </ErrorBoundary>
+                                        <Dropzone>
+                                            <ErrorBoundary title="The viewport crashed">
+                                                <ViewportView/>
+                                            </ErrorBoundary>
+                                        </Dropzone>
                                     </Grid>
                                     <Grid size={{xs: 12, sm: 12, md: 3}}>
                                         <Box sx={{

@@ -23,6 +23,16 @@ import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {ConvertParameters} from "../model/ConvertParameters.ts";
 import {useDismissedFlag} from "../hooks/useDismissedFlag.ts";
 import {
+    ASTC_BLOCK_SIZE_OPTIONS,
+    ASTC_BLOCK_SIZE_TOOLTIP,
+    ASTC_MODE_OPTIONS,
+    ASTC_MODE_TOOLTIP,
+    ASTC_NORMAL_MAP_TOOLTIP,
+    ASTC_QUALITY_OPTIONS,
+    ASTC_QUALITY_TOOLTIP,
+} from "../model/AstcConstants.ts";
+import {
+    KTX_ENCODING_ASTC,
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
 } from "../model/Ktx2EncodingConstants.ts";
@@ -47,6 +57,7 @@ import {
     ETC1S_QUALITY_TOOLTIP,
     FILE_NAME_TOOLTIP,
     MIPMAPS_TOOLTIP,
+    SRGB_TOOLTIP,
     QUALITY_OPTIONS,
     RDO_QUALITY_TOOLTIP,
     RDO_VALUE_TOOLTIPS,
@@ -102,6 +113,10 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
 
     const isUastc = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
     const isEtc1s = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_ETC1S;
+    const isAstc = params.encoding === KTX_ENCODING_ASTC;
+
+    // Just temporary hide some of unused stuff
+    const hideAsNotReady = true;
 
     const handleConvert = () => {
         if (!texture?.image) {
@@ -145,6 +160,9 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                                      value={params.encoding} options={ENCODING_OPTIONS} onChange={field("encoding")}
                                      valueTooltip={ENCODING_VALUE_TOOLTIPS[params.encoding]}/>
 
+                        <CheckboxField row label="sRGB" tooltip={SRGB_TOOLTIP}
+                                       value={params.srgb} onChange={field("srgb")}/>
+
                         <CheckboxField row label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
                                        value={params.generateMipmaps} onChange={field("generateMipmaps")}/>
 
@@ -160,7 +178,33 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                                          onChange={field("etc1sQuality")}/>
                         }
 
-                        {(isUastc || isEtc1s) &&
+                        {isAstc && (
+                            <>
+                                <SelectField row label="ASTC Block Size" tooltip={ASTC_BLOCK_SIZE_TOOLTIP}
+                                             value={params.astcBlockSize} options={ASTC_BLOCK_SIZE_OPTIONS}
+                                             onChange={field("astcBlockSize")}/>
+                                <SelectField row label="ASTC Quality" tooltip={ASTC_QUALITY_TOOLTIP}
+                                             value={params.astcQuality} options={ASTC_QUALITY_OPTIONS}
+                                             onChange={field("astcQuality")}/>
+                                {!(hideAsNotReady) &&
+                                <SelectField row label="ASTC Mode" tooltip={ASTC_MODE_TOOLTIP}
+                                             value={params.astcMode} options={ASTC_MODE_OPTIONS}
+                                             onChange={field("astcMode")}/>
+                                }
+                                {!(hideAsNotReady) &&
+                                <CheckboxField row label="Normal Map" tooltip={ASTC_NORMAL_MAP_TOOLTIP}
+                                               value={params.astcNormalMap}
+                                               onChange={(normalMap) => setParams((prev) => ({
+                                                   ...prev,
+                                                   astcNormalMap: normalMap,
+                                                   // Normal maps are linear data; libktx only allows normalMap for non-sRGB.
+                                                   srgb: normalMap ? false : prev.srgb,
+                                               }))}/>
+                                }
+                            </>
+                        )}
+
+                        {(isUastc || isEtc1s || isAstc) &&
                             <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Block Align"
                                            row
                                            tooltip={BLOCK_ALIGN_TOOLTIP}

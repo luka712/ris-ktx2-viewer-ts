@@ -1,6 +1,7 @@
 // Option lists and help texts for the Convert To Ktx2 dialog.
 
 import {
+    KTX_ENCODING_ASTC,
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
     KTX_ENCODING_RGBA
@@ -25,7 +26,7 @@ import {
     RDO_SMALLEST_FILE,
 } from "./RDOCompressionConstants.ts";
 
-export const ENCODING_OPTIONS = [KTX_ENCODING_RGBA, KTX_ENCODING_BASIS_UNIVERSAL_UASTC, KTX_ENCODING_BASIS_UNIVERSAL_ETC1S];
+export const ENCODING_OPTIONS = [KTX_ENCODING_RGBA, KTX_ENCODING_BASIS_UNIVERSAL_UASTC, KTX_ENCODING_BASIS_UNIVERSAL_ETC1S, KTX_ENCODING_ASTC];
 export const QUALITY_OPTIONS = [KTX_LOWEST_QUALITY, KTX_LOW_QUALITY, KTX_MEDIUM_QUALITY, KTX_HIGH_QUALITY, KTX_HIGHEST_QUALITY];
 export const COMPRESSION_OPTIONS = [KTX_COMPRESSION_NONE, KTX_COMPRESSION_ZSTANDARD, KTX_COMPRESSION_ZLIB];
 
@@ -38,8 +39,11 @@ export const ENCODING_TOOLTIP = "Encode the texture with the specified codec bef
 export const ENCODING_VALUE_TOOLTIPS: Record<string, string> = {
     [KTX_ENCODING_BASIS_UNIVERSAL_UASTC]: "Encode the texture using UASTC, providing high-quality GPU texture compression.",
     [KTX_ENCODING_BASIS_UNIVERSAL_ETC1S]: "Encode the texture using ETC1S, providing smaller files at the cost of image quality.",
+    [KTX_ENCODING_ASTC]: "Encode the texture directly as ASTC (no Basis transcoding). Needs GPU ASTC support to display; the viewer currently shows 4x4 only.",
     [KTX_ENCODING_RGBA]: "Store the texture as uncompressed raw RGBA data without texture encoding.",
 };
+
+export const SRGB_TOOLTIP = "Mark the texture as sRGB color data, so the GPU converts it to linear when sampling. Use it for color/albedo images; turn it off for linear data such as normal maps, roughness, masks or height maps.";
 
 export const BLOCK_ALIGN_TOOLTIP = "Align image dimensions to block size of compressed texture format."
 
