@@ -1,7 +1,7 @@
 {
   "name": "ris-ktx2-viewer",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -18,9 +18,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-dropzone": "^19.1.1",
-    "reflect-metadata": "^0.2.2",
-    "ris-framework": "^0.1.0-dev.9",
-    "ris-ktx2": "^0.1.0",
+    "ris-framework": "^0.3.0",
+    "ris-ktx2": "^0.2.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

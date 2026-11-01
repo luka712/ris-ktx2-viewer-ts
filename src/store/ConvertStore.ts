@@ -135,6 +135,7 @@ export const useConvertStore = create<ConvertStore>((set, get) => {
                 // Only select it while the dialog is open; a background result must not change the selection.
                 const name = useTextureStore.getState().addKtx2Texture(result.name, result.ktx, {
                     select: get().dialogOpen,
+                    fileSize: result.fileSize,
                 });
                 finish();
                 report("success", `${name} converted`);

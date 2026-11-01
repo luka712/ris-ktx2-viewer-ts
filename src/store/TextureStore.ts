@@ -1,6 +1,7 @@
-import {type IFramework, type ITexture2D, TextureFormat} from "ris-framework";
+import {ColorSpace, type IFramework, type ITexture2D, TextureFormat, TextureUtilities} from "ris-framework";
 import {create} from "zustand";
-import {type IKtx2Texture, VkFormat} from "ris-ktx2";
+import {VkFormat} from "ris-ktx2";
+import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {
     createTextureFromKtx2,
@@ -31,12 +32,23 @@ interface TextureStore {
      * The name is made unique (`name (2).ktx2`, …); the name used is returned.
      * With `select: false` the current selection and mip level are kept (unless nothing is selected).
      */
-    addKtx2Texture: (name: string, ktx: IKtx2Texture, options?: { select?: boolean }) => string;
+    addKtx2Texture: (name: string, ktx: FrameworkKtx2Texture, options?: { select?: boolean; fileSize?: number }) => string;
     /** `name`, or `name (2)`, `name (3)`, … if a loaded or loading texture already uses it. */
     uniqueTextureName: (name: string) => string;
     removeTexture: (id: string) => void;
     /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setTextureFormat: (value: TextureFormat) => void;
+    /**
+     * Switches the framework's display color space and recreates every texture in the matching
+     * sRGB/linear variant of its current format. Textures that fail keep their old GPU texture.
+     */
+    applyDisplayColorSpace: (colorSpace: ColorSpace) => void;
+    /**
+     * Re-uploads every texture to a new framework. The viewport remounts its canvas when the layout switches
+     * between desktop and mobile (md breakpoint), which creates a new WebGL context; textures from the old
+     * context can't be bound there ("object does not belong to this context") and the viewport goes blank.
+     */
+    moveTexturesToFramework: (framework: IFramework) => void;
     /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setGenerateMipmaps: (value: boolean) => void;
     setMipLevel: (mipLevel: number) => void;
@@ -53,6 +65,14 @@ export interface TextureDetails {
 
 function formatSizeMiB(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toPrecision(3)} MiB`;
+}
+
+/** Source file size: KiB below 1 MiB, otherwise MiB (same precision as GPU memory); "—" if unknown. */
+export function formatFileSize(bytes: number | undefined): string {
+    if (bytes === undefined) {
+        return "—";
+    }
+    return bytes < 1024 * 1024 ? `${(bytes / 1024).toPrecision(3)} KiB` : formatSizeMiB(bytes);
 }
 
 export function textureDetails(texture: ITexture2D | null | undefined): TextureDetails {
@@ -77,7 +97,10 @@ export function textureDetails(texture: ITexture2D | null | undefined): TextureD
 
 function mipmapsAllowed(container: ITexture2DContainer | null, textureFormat: TextureFormat): boolean {
     const ktx = container?.ktxContainer;
-    return !ktx || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM;
+    // Uncompressed RGBA8, linear or sRGB (WebGL2 can generate mipmaps for SRGB8_ALPHA8).
+    return !ktx
+        || ktx.vkFormat === VkFormat.R8G8B8A8_UNORM || ktx.vkFormat === VkFormat.R8G8B8A8_SRGB
+        || textureFormat === TextureFormat.RGBA_8_UNORM || textureFormat === TextureFormat.RGBA_8_UNORM_SRGB;
 }
 
 /** Whether "Generate Mipmaps" applies to the texture in its current GPU format. */
@@ -176,7 +199,7 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 throw err;
             }
             const uniqueName = makeUniqueName(name, isNameTaken);
-            addContainer({id: createTextureId(), name: uniqueName, texture, ktxContainer: ktx, image: null},
+            addContainer({id: createTextureId(), name: uniqueName, texture, ktxContainer: ktx, image: null, fileSize: options?.fileSize},
                 options?.select ?? true);
             return uniqueName;
         },
@@ -198,6 +221,51 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 generateMipmaps && mipmapsAllowed(selected, value),
             );
             replaceTexture(selected, texture);
+        },
+
+        applyDisplayColorSpace: (colorSpace) => {
+            const viewer = useViewerStore.getState();
+            viewer.setDisplayColorSpace(colorSpace);
+            const framework = viewer.framework;
+            if (!framework) {
+                return;
+            }
+            const srgb = colorSpace === ColorSpace.SRGB;
+            for (const container of get().textures) {
+                const current = container.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
+                const format = srgb ? TextureUtilities.convertToSrgbVariant(current) : TextureUtilities.convertToLinearVariant(current);
+                if (format === current && container.texture) {
+                    continue;
+                }
+                try {
+                    const generateMipmaps = (container.texture?.mipLevels ?? 1) > 1 && mipmapsAllowed(container, format);
+                    replaceTexture(container, recreateTexture(framework, container, format, generateMipmaps));
+                } catch (err) {
+                    console.error(`Failed to switch ${container.name} to ${colorSpace}:`, err);
+                }
+            }
+        },
+
+        moveTexturesToFramework: (framework) => {
+            const srgb = framework.renderer.colorSpace === ColorSpace.SRGB;
+            const textures = get().textures.map((container) => {
+                const current = container.texture?.textureFormat ?? framework.renderer.preferredTextureFormat;
+                const format = srgb ? TextureUtilities.convertToSrgbVariant(current) : TextureUtilities.convertToLinearVariant(current);
+                const generateMipmaps = (container.texture?.mipLevels ?? 1) > 1 && mipmapsAllowed(container, format);
+                try {
+                    const texture = recreateTexture(framework, container, format, generateMipmaps);
+                    try {
+                        container.texture?.dispose();
+                    } catch {
+                        // The old context may already be gone.
+                    }
+                    return {...container, texture};
+                } catch (err) {
+                    console.error(`Failed to re-upload ${container.name} to the new canvas:`, err);
+                    return {...container, texture: null};
+                }
+            });
+            set({textures});
         },
 
         setGenerateMipmaps: (value) => {

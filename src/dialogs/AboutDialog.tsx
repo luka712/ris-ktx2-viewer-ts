@@ -40,21 +40,14 @@ function ExternalLink({
     );
 }
 
-export default function AboutDialog() {
-    const [open, setOpen] = React.useState(false);
-
+/** About dialog, opened from the header info menu. */
+export default function AboutDialog({open, onClose}: { open: boolean; onClose: () => void }) {
     const theme = useTheme();
     const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
-
-    const handleOpen = () => setOpen(true);
-    const handleClose = () => setOpen(false);
+    const handleClose = onClose;
 
     return (
         <>
-            <Button variant="outlined" onClick={handleOpen}>
-                See more
-            </Button>
-
             <Dialog
                 open={open}
                 onClose={handleClose}
