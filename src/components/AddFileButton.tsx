@@ -1,14 +1,16 @@
 import {useRef, useState, useTransition} from "react";
-import {Alert, Button, LinearProgress} from "@mui/material";
+import {Alert, Button, CircularProgress, IconButton, Snackbar, Tooltip} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import {useTextureStore} from "../store/TextureStore.ts";
 
 const ACCEPT = ".ktx2,.png,.jpg,.jpeg,.webp";
 
 /**
- * Button that opens a file picker for texture files.
- * Disabled with a progress bar while the picked files are decoded and uploaded.
+ * Header button that opens a file picker for texture files (files can also be dropped on the viewport, see Dropzone).
+ * Shows a spinner while the picked files are decoded and uploaded; load errors appear in a snackbar.
+ * `compact` renders an icon-only button (narrow screens).
  */
-export default function AddFileButton() {
+export default function AddFileButton({compact = false}: { compact?: boolean }) {
     const addTextureFromFile = useTextureStore((state) => state.addTextureFromFile);
     const inputRef = useRef<HTMLInputElement>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
@@ -38,16 +40,24 @@ export default function AddFileButton() {
         });
     };
 
+    const icon = isLoading ? <CircularProgress size={18} color="inherit" aria-label="Loading textures…"/> : <AddIcon/>;
+
     return (
         <>
-            <Button
-                variant="contained"
-                onClick={() => inputRef.current?.click()}
-                disabled={isLoading}
-            >
-                Add File
-            </Button>
-            {/* Files can also be dropped on the viewport (see Dropzone). */}
+            {compact ? (
+                <Tooltip title="Add file">
+                    <span>
+                        <IconButton aria-label="Add file" onClick={() => inputRef.current?.click()} disabled={isLoading}>
+                            {icon}
+                        </IconButton>
+                    </span>
+                </Tooltip>
+            ) : (
+                <Button variant="contained" size="small" startIcon={icon}
+                        onClick={() => inputRef.current?.click()} disabled={isLoading}>
+                    Add File
+                </Button>
+            )}
             <input
                 ref={inputRef}
                 type="file"
@@ -57,12 +67,11 @@ export default function AddFileButton() {
                 aria-label="Texture files"
                 onChange={handleChange}
             />
-            {isLoading && <LinearProgress aria-label="Loading textures…"/>}
-            {loadError && (
+            <Snackbar open={loadError !== null} autoHideDuration={8000} onClose={() => setLoadError(null)}>
                 <Alert severity="error" onClose={() => setLoadError(null)} sx={{whiteSpace: "pre-line"}}>
                     {loadError}
                 </Alert>
-            )}
+            </Snackbar>
         </>
     );
 }

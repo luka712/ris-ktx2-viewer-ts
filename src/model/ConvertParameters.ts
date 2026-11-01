@@ -16,7 +16,7 @@ export class ConvertParameters {
     public threadCount = -1;
     /** ASTC block size label, see ASTC_BLOCK_SIZE_OPTIONS. */
     public astcBlockSize = DEFAULT_ASTC_BLOCK_SIZE;
-    /** AstcQualityLevel value (string enum). */
+    /** KtxAstcQualityLevel value (string enum). */
     public astcQuality = DEFAULT_ASTC_QUALITY;
     /** KtxAstcEncoderMode name. */
     public astcMode = DEFAULT_ASTC_MODE;
@@ -25,5 +25,6 @@ export class ConvertParameters {
      * Mark the output as sRGB color data (R8G8B8A8_SRGB source; libktx carries it to the Basis DFD
      * transfer function and to the ASTC_*_SRGB_BLOCK format). Off for linear data such as normal maps.
      */
-    public srgb = true;
+    /** Create an sRGB file. Off by default; the viewer works in linear color space (see displayColorSpace). */
+    public srgb = false;
 }

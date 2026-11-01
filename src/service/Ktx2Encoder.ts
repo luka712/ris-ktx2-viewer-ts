@@ -2,7 +2,7 @@
 // Must stay DOM-free: it is type-checked against the WebWorker lib (tsconfig.worker.json).
 
 import {
-    AstcQualityLevel,
+    KtxAstcQualityLevel,
     type IKtx2Texture,
     type IKtxAstcParams,
     type IKtxBasisParams,
@@ -72,7 +72,7 @@ export function buildAstcParams(convertParameters: ConvertParameters, verbose: b
     return {
         blockDimension,
         mode,
-        qualityLevel: convertParameters.astcQuality as AstcQualityLevel,
+        qualityLevel: convertParameters.astcQuality as KtxAstcQualityLevel,
         normalMap: convertParameters.astcNormalMap,
         threadCount: resolveThreadCount(convertParameters.threadCount),
         verbose,

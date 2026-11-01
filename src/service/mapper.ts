@@ -10,7 +10,7 @@ const TEXTURE_FORMAT_LABELS: Partial<Record<TextureFormat, string>> = {
     [TextureFormat.BC7_RGBA_UNORM]: "BC7_RGBA_UNORM",
     [TextureFormat.BC3_RGBA_UNORM]: "BC3_RGBA_UNORM",
     [TextureFormat.ETC2_RGBA8_UNORM]: "ETC2_RGBA8_UNORM",
-    [TextureFormat.ASTC_4X4_RGBA]: "ASTC_4X4_RGBA",
+    [TextureFormat.ASTC_4X4_RGBA_UNORM]: "ASTC_4X4_RGBA_UNORM",
 };
 
 export function textureFormatToString(format: TextureFormat | undefined | null): string {

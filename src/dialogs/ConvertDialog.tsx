@@ -21,6 +21,7 @@ import {SliderField} from "../components/fields/SliderField.tsx";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {ConvertParameters} from "../model/ConvertParameters.ts";
+import {clearConvertOptions, loadConvertOptions, saveConvertOptions} from "../service/convertOptionsStorage.ts";
 import {useDismissedFlag} from "../hooks/useDismissedFlag.ts";
 import {
     ASTC_BLOCK_SIZE_OPTIONS,
@@ -73,7 +74,8 @@ interface ConvertDialogProps {
     texture: ITexture2DContainer | null;
 }
 
-function initialParameters(texture: ITexture2DContainer | null): ConvertParameters {
+/** Built-in defaults (used when nothing is saved and by "Reset to defaults"). */
+function defaultParameters(texture: ITexture2DContainer | null): ConvertParameters {
     const params = new ConvertParameters();
     params.fileName = texture?.name ? changeFileExtension(texture.name, KTX2_FILE_EXTENSION) : "";
     params.encoding = KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
@@ -83,12 +85,19 @@ function initialParameters(texture: ITexture2DContainer | null): ConvertParamete
     return params;
 }
 
+/** Defaults overlaid with the options saved on the last Convert (see convertOptionsStorage). */
+function initialParameters(texture: ITexture2DContainer | null): ConvertParameters {
+    return loadConvertOptions(defaultParameters(texture));
+}
+
 /**
  * Convert To Ktx2 dialog. Conversion state lives in ConvertStore, so closing the dialog
  * (button, Escape, backdrop) or unmounting it never stops a running conversion; the result
  * is still downloaded and added to the texture list. While a conversion runs, the form is
  * replaced by a status message and a new conversion cannot be started; "Cancel conversion"
  * is the only way to stop it (not available while the main-thread fallback runs).
+ *
+ * TODO: restructure layout (source/target | encoding options, sticky footer) — see TODO.md "UI layout".
  */
 export default function ConvertDialog({open, texture}: ConvertDialogProps) {
     const isConverting = useConvertStore(store => store.isConverting);
@@ -123,6 +132,7 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
             // This should never happen (Convert is disabled without a source image).
             return;
         }
+        saveConvertOptions(params);
         void startConversion(texture, params);
     };
 
@@ -160,10 +170,10 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                                      value={params.encoding} options={ENCODING_OPTIONS} onChange={field("encoding")}
                                      valueTooltip={ENCODING_VALUE_TOOLTIPS[params.encoding]}/>
 
-                        <CheckboxField row label="sRGB" tooltip={SRGB_TOOLTIP}
+                        <CheckboxField row label="sRGB (color data)" tooltip={SRGB_TOOLTIP}
                                        value={params.srgb} onChange={field("srgb")}/>
 
-                        <CheckboxField row label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
+                        <CheckboxField row label="Mipmaps" tooltip={MIPMAPS_TOOLTIP}
                                        value={params.generateMipmaps} onChange={field("generateMipmaps")}/>
 
                         {isUastc &&
@@ -205,7 +215,7 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                         )}
 
                         {(isUastc || isEtc1s || isAstc) &&
-                            <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Block Align"
+                            <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Pad to block size"
                                            row
                                            tooltip={BLOCK_ALIGN_TOOLTIP}
                             />}
@@ -213,7 +223,7 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                         {/* ETC1S does not support ZSTD or ZLIB compression */}
                         {!isEtc1s && (
                             <>
-                                <SelectField row label="Compression" tooltip={COMPRESSION_TOOLTIP}
+                                <SelectField row label="Extra compression" tooltip={COMPRESSION_TOOLTIP}
                                              value={params.compression} options={COMPRESSION_OPTIONS}
                                              onChange={field("compression")}
                                              valueTooltip={COMPRESSION_VALUE_TOOLTIPS[params.compression]}/>
@@ -258,6 +268,14 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                             </Button>
                         </span>
                     </Tooltip>
+                )}
+                {!isConverting && (
+                    <Button onClick={() => {
+                        clearConvertOptions();
+                        setParams((prev) => ({...defaultParameters(texture), fileName: prev.fileName}));
+                    }} sx={{marginRight: "auto"}}>
+                        Reset to defaults
+                    </Button>
                 )}
                 <Button onClick={closeDialog}>
                     Close

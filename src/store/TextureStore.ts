@@ -1,4 +1,4 @@
-import {type IFramework, type ITexture2D, TextureFormat} from "ris-framework";
+import {ColorSpace, type IFramework, type ITexture2D, TextureFormat, TextureUtilities} from "ris-framework";
 import {create} from "zustand";
 import {VkFormat} from "ris-ktx2";
 import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
@@ -38,6 +38,17 @@ interface TextureStore {
     removeTexture: (id: string) => void;
     /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setTextureFormat: (value: TextureFormat) => void;
+    /**
+     * Switches the framework's display color space and recreates every texture in the matching
+     * sRGB/linear variant of its current format. Textures that fail keep their old GPU texture.
+     */
+    applyDisplayColorSpace: (colorSpace: ColorSpace) => void;
+    /**
+     * Re-uploads every texture to a new framework. The viewport remounts its canvas when the layout switches
+     * between desktop and mobile (md breakpoint), which creates a new WebGL context; textures from the old
+     * context can't be bound there ("object does not belong to this context") and the viewport goes blank.
+     */
+    moveTexturesToFramework: (framework: IFramework) => void;
     /** Recreates the selected GPU texture. Throws if that fails; the current texture is kept. */
     setGenerateMipmaps: (value: boolean) => void;
     setMipLevel: (mipLevel: number) => void;
@@ -210,6 +221,51 @@ export const useTextureStore = create<TextureStore>((set, get) => {
                 generateMipmaps && mipmapsAllowed(selected, value),
             );
             replaceTexture(selected, texture);
+        },
+
+        applyDisplayColorSpace: (colorSpace) => {
+            const viewer = useViewerStore.getState();
+            viewer.setDisplayColorSpace(colorSpace);
+            const framework = viewer.framework;
+            if (!framework) {
+                return;
+            }
+            const srgb = colorSpace === ColorSpace.SRGB;
+            for (const container of get().textures) {
+                const current = container.texture?.textureFormat ?? TextureFormat.RGBA_8_UNORM;
+                const format = srgb ? TextureUtilities.convertToSrgbVariant(current) : TextureUtilities.convertToLinearVariant(current);
+                if (format === current && container.texture) {
+                    continue;
+                }
+                try {
+                    const generateMipmaps = (container.texture?.mipLevels ?? 1) > 1 && mipmapsAllowed(container, format);
+                    replaceTexture(container, recreateTexture(framework, container, format, generateMipmaps));
+                } catch (err) {
+                    console.error(`Failed to switch ${container.name} to ${colorSpace}:`, err);
+                }
+            }
+        },
+
+        moveTexturesToFramework: (framework) => {
+            const srgb = framework.renderer.colorSpace === ColorSpace.SRGB;
+            const textures = get().textures.map((container) => {
+                const current = container.texture?.textureFormat ?? framework.renderer.preferredTextureFormat;
+                const format = srgb ? TextureUtilities.convertToSrgbVariant(current) : TextureUtilities.convertToLinearVariant(current);
+                const generateMipmaps = (container.texture?.mipLevels ?? 1) > 1 && mipmapsAllowed(container, format);
+                try {
+                    const texture = recreateTexture(framework, container, format, generateMipmaps);
+                    try {
+                        container.texture?.dispose();
+                    } catch {
+                        // The old context may already be gone.
+                    }
+                    return {...container, texture};
+                } catch (err) {
+                    console.error(`Failed to re-upload ${container.name} to the new canvas:`, err);
+                    return {...container, texture: null};
+                }
+            });
+            set({textures});
         },
 
         setGenerateMipmaps: (value) => {

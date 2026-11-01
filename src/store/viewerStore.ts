@@ -1,4 +1,11 @@
-import {type IFramework, type ISampler, MipMapSamplerFilter, SamplerDescriptor, SamplerFilter} from "ris-framework";
+import {
+    ColorSpace,
+    type IFramework,
+    type ISampler,
+    MipMapSamplerFilter,
+    SamplerDescriptor,
+    SamplerFilter
+} from "ris-framework";
 import {create} from "zustand";
 import {View2D} from "../model/View.ts";
 
@@ -18,13 +25,22 @@ interface ViewerStore {
     filter: SamplerFilter;
     sampler: ISampler | undefined;
 
+    /**
+     * Color space the framework displays textures in (renderer.colorSpace). Linear by default; sRGB forces
+     * sRGB GPU formats (hardware sRGB decode). Persisted in localStorage.
+     */
+    displayColorSpace: ColorSpace;
+
     setFramework: (framework: IFramework) => void;
+    /** Sets renderer.colorSpace. Callers recreate existing textures (TextureStore.applyDisplayColorSpace). */
+    setDisplayColorSpace: (colorSpace: ColorSpace) => void;
     /** Disposes the sampler and forgets the framework (viewport unmounted). */
     clearFramework: () => void;
     setInitError: (message: string) => void;
     setView: (view: string) => void;
     setFilter: (filter: SamplerFilter) => void;
 }
+
 
 function createSampler(
     framework: IFramework,
@@ -47,6 +63,7 @@ export const useViewerStore = create<ViewerStore>((set, get) => ({
     view: View2D,
     filter: SamplerFilter.LINEAR,
     sampler: undefined,
+    displayColorSpace: ColorSpace.LINEAR,
 
     setFramework: (framework) => {
         const {filter, sampler} = get();
@@ -63,6 +80,14 @@ export const useViewerStore = create<ViewerStore>((set, get) => ({
     },
 
     setInitError: (initError) => set({initError}),
+
+    setDisplayColorSpace: (displayColorSpace) => {
+        const {framework} = get();
+        if (framework) {
+            framework.renderer.colorSpace = displayColorSpace;
+        }
+        set({displayColorSpace});
+    },
 
     setView: (view) => set({view}),
 

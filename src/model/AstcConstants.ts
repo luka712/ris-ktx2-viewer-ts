@@ -4,7 +4,7 @@
 /** 2D block sizes supported by KtxAstcBlockDimension, from best quality / largest file to smallest. */
 export const ASTC_BLOCK_SIZE_OPTIONS = ["4x4", "5x4", "5x5", "6x5", "6x6", "8x5", "8x6", "8x8",
     "10x5", "10x6", "10x8", "10x10", "12x10", "12x12"];
-/** AstcQualityLevel values. */
+/** KtxAstcQualityLevel values. */
 export const ASTC_QUALITY_OPTIONS = ["FASTEST", "FAST", "MEDIUM", "THOROUGH", "EXHAUSTIVE"];
 /** KtxAstcEncoderMode names. HDR is left out: the source is always 8-bit RGBA. */
 export const ASTC_MODE_OPTIONS = ["DEFAULT", "LDR"];

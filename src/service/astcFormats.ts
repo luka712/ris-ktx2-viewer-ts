@@ -9,7 +9,7 @@ const VK_ASTC_4X4_SFLOAT_BLOCK = 1000066000;
 export interface AstcFormatInfo {
     /** e.g. "6x6 SRGB". */
     label: string;
-    /** ris-framework 0.1 can upload only ASTC_4X4_UNORM_BLOCK. */
+    /** ris-framework 0.2 uploads every 2D LDR block size (UNORM and SRGB); HDR (SFLOAT) is not supported. */
     frameworkSupported: boolean;
 }
 
@@ -19,7 +19,7 @@ export function describeAstcFormat(vkFormat: number): AstcFormatInfo | null {
     if (ldrIndex >= 0 && ldrIndex < VK_ASTC_BLOCKS.length * 2) {
         const srgb = ldrIndex % 2 === 1;
         const block = VK_ASTC_BLOCKS[Math.floor(ldrIndex / 2)];
-        return {label: `${block} ${srgb ? "SRGB" : "UNORM"}`, frameworkSupported: ldrIndex === 0};
+        return {label: `${block} ${srgb ? "SRGB" : "UNORM"}`, frameworkSupported: true};
     }
     const hdrIndex = vkFormat - VK_ASTC_4X4_SFLOAT_BLOCK;
     if (hdrIndex >= 0 && hdrIndex < VK_ASTC_BLOCKS.length) {

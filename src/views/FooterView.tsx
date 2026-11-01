@@ -1,68 +1,30 @@
-import {Paper, Stack, Typography} from "@mui/material";
-import {VkFormat} from "ris-ktx2";
-import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
-import {formatFileSize, textureDetails, useSelectedTexture} from "../store/TextureStore.ts";
+import {Paper, Typography} from "@mui/material";
+import {textureFormatToString} from "../service/mapper.ts";
+import {encodingLabel} from "../service/textureInfo.ts";
+import {useSelectedTexture} from "../store/TextureStore.ts";
+import {useViewerStore} from "../store/viewerStore.ts";
 
-function FooterStat({label, value}: { label: string; value: string | number }) {
-    return (
-        <Stack spacing={0.25} sx={{alignItems: "center"}}>
-            <Typography variant="caption" sx={{opacity: 0.6, fontSize: 11, lineHeight: 1.2}}>
-                {label}
-            </Typography>
-            <Typography variant="body2" sx={{fontSize: 13, lineHeight: 1.2}}>
-                {value}
-            </Typography>
-        </Stack>
-    );
-}
-
-/**
- * sRGB / Linear from the VkFormat name. Basis data reports UNDEFINED and the framework's ris-ktx2 0.1
- * does not expose the DFD transfer function, so it shows "—".
- */
-function ktx2ColorSpace(ktx2: FrameworkKtx2Texture): string {
-    if (ktx2.vkFormat === VkFormat.UNDEFINED) {
-        // TODO: Show sRGB/Linear for Basis textures once the DFD transfer function is exposed.
-        return "—";
-    }
-    return (VkFormat[ktx2.vkFormat] ?? "").includes("SRGB") ? "sRGB" : "Linear";
-}
-
-function ktx2FormatLabel(ktx2: FrameworkKtx2Texture): string {
-    if (ktx2.vkFormat === VkFormat.UNDEFINED) {
-        return ktx2.needsTranscoding ? "Universal Basis" : "—";
-    }
-    return VkFormat[ktx2.vkFormat] ?? `Unknown (${ktx2.vkFormat})`;
-}
-
-/**
- * Footer strip showing selected texture metrics.
- */
+/** One-line status bar: selected texture, size, KTX2 encoding and GPU format (details are in the Inspector). */
 export function FooterView() {
-    const selectedTexture = useSelectedTexture();
-    const {resolution, size: memory, mipLevels} = textureDetails(selectedTexture?.texture);
+    const selected = useSelectedTexture();
+    const framework = useViewerStore((store) => store.framework);
+    const gpu = framework?.renderer.graphicsDevice.gpuInfo.name;
+    const texture = selected?.texture;
 
-    const ktx2 = selectedTexture?.ktxContainer;
+    const text = selected
+        ? [selected.name, texture && `${texture.width}×${texture.height}`, selected.ktxContainer && encodingLabel(selected, true), texture && textureFormatToString(texture.textureFormat)]
+            .filter(Boolean).join(" · ")
+        : "No texture loaded";
 
     return (
-        <Paper elevation={3} sx={{borderRadius: 5, px: {xs: 1, sm: 2}, py: 2}}>
-            <Stack
-                direction="row"
-                spacing={2.5}
-                useFlexGap
-                sx={{
-                    justifyContent: {xs: "flex-start", sm: "flex-end"},
-                    flexWrap: "wrap",
-                    gap: 2,
-                }}
-            >
-                <FooterStat label="Resolution" value={resolution}/>
-                <FooterStat label="Mip Levels" value={mipLevels}/>
-                <FooterStat label="GPU Memory" value={memory}/>
-                <FooterStat label="File Size" value={formatFileSize(selectedTexture?.fileSize)}/>
-                {ktx2 && <FooterStat label="Ktx2 Format" value={ktx2FormatLabel(ktx2)}/>}
-                {ktx2 && <FooterStat label="Color Space" value={ktx2ColorSpace(ktx2)}/>}
-            </Stack>
+        <Paper elevation={1} sx={{borderRadius: 2, px: {xs: 1, sm: 2}, py: 0.5, display: "flex", gap: 2}}>
+            <Typography variant="caption" noWrap sx={{flex: 1, minWidth: 0}}>{text}</Typography>
+            {gpu && (
+                <Typography variant="caption" color="text.secondary" noWrap
+                            sx={{display: {xs: "none", sm: "block"}, maxWidth: "40%"}}>
+                    {gpu}
+                </Typography>
+            )}
         </Paper>
     );
 }
