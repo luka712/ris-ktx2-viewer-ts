@@ -21,8 +21,19 @@ import {SliderField} from "../components/fields/SliderField.tsx";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {ConvertParameters} from "../model/ConvertParameters.ts";
+import {clearConvertOptions, loadConvertOptions, saveConvertOptions} from "../service/convertOptionsStorage.ts";
 import {useDismissedFlag} from "../hooks/useDismissedFlag.ts";
 import {
+    ASTC_BLOCK_SIZE_OPTIONS,
+    ASTC_BLOCK_SIZE_TOOLTIP,
+    ASTC_MODE_OPTIONS,
+    ASTC_MODE_TOOLTIP,
+    ASTC_NORMAL_MAP_TOOLTIP,
+    ASTC_QUALITY_OPTIONS,
+    ASTC_QUALITY_TOOLTIP,
+} from "../model/AstcConstants.ts";
+import {
+    KTX_ENCODING_ASTC,
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
 } from "../model/Ktx2EncodingConstants.ts";
@@ -47,6 +58,7 @@ import {
     ETC1S_QUALITY_TOOLTIP,
     FILE_NAME_TOOLTIP,
     MIPMAPS_TOOLTIP,
+    SRGB_TOOLTIP,
     QUALITY_OPTIONS,
     RDO_QUALITY_TOOLTIP,
     RDO_VALUE_TOOLTIPS,
@@ -62,7 +74,8 @@ interface ConvertDialogProps {
     texture: ITexture2DContainer | null;
 }
 
-function initialParameters(texture: ITexture2DContainer | null): ConvertParameters {
+/** Built-in defaults (used when nothing is saved and by "Reset to defaults"). */
+function defaultParameters(texture: ITexture2DContainer | null): ConvertParameters {
     const params = new ConvertParameters();
     params.fileName = texture?.name ? changeFileExtension(texture.name, KTX2_FILE_EXTENSION) : "";
     params.encoding = KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
@@ -72,12 +85,19 @@ function initialParameters(texture: ITexture2DContainer | null): ConvertParamete
     return params;
 }
 
+/** Defaults overlaid with the options saved on the last Convert (see convertOptionsStorage). */
+function initialParameters(texture: ITexture2DContainer | null): ConvertParameters {
+    return loadConvertOptions(defaultParameters(texture));
+}
+
 /**
  * Convert To Ktx2 dialog. Conversion state lives in ConvertStore, so closing the dialog
  * (button, Escape, backdrop) or unmounting it never stops a running conversion; the result
  * is still downloaded and added to the texture list. While a conversion runs, the form is
  * replaced by a status message and a new conversion cannot be started; "Cancel conversion"
  * is the only way to stop it (not available while the main-thread fallback runs).
+ *
+ * TODO: restructure layout (source/target | encoding options, sticky footer) — see TODO.md "UI layout".
  */
 export default function ConvertDialog({open, texture}: ConvertDialogProps) {
     const isConverting = useConvertStore(store => store.isConverting);
@@ -102,12 +122,17 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
 
     const isUastc = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC;
     const isEtc1s = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_ETC1S;
+    const isAstc = params.encoding === KTX_ENCODING_ASTC;
+
+    // Just temporary hide some of unused stuff
+    const hideAsNotReady = true;
 
     const handleConvert = () => {
         if (!texture?.image) {
             // This should never happen (Convert is disabled without a source image).
             return;
         }
+        saveConvertOptions(params);
         void startConversion(texture, params);
     };
 
@@ -145,7 +170,10 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                                      value={params.encoding} options={ENCODING_OPTIONS} onChange={field("encoding")}
                                      valueTooltip={ENCODING_VALUE_TOOLTIPS[params.encoding]}/>
 
-                        <CheckboxField row label="Generate Mipmaps" tooltip={MIPMAPS_TOOLTIP}
+                        <CheckboxField row label="sRGB (color data)" tooltip={SRGB_TOOLTIP}
+                                       value={params.srgb} onChange={field("srgb")}/>
+
+                        <CheckboxField row label="Mipmaps" tooltip={MIPMAPS_TOOLTIP}
                                        value={params.generateMipmaps} onChange={field("generateMipmaps")}/>
 
                         {isUastc &&
@@ -160,8 +188,34 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                                          onChange={field("etc1sQuality")}/>
                         }
 
-                        {(isUastc || isEtc1s) &&
-                            <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Block Align"
+                        {isAstc && (
+                            <>
+                                <SelectField row label="ASTC Block Size" tooltip={ASTC_BLOCK_SIZE_TOOLTIP}
+                                             value={params.astcBlockSize} options={ASTC_BLOCK_SIZE_OPTIONS}
+                                             onChange={field("astcBlockSize")}/>
+                                <SelectField row label="ASTC Quality" tooltip={ASTC_QUALITY_TOOLTIP}
+                                             value={params.astcQuality} options={ASTC_QUALITY_OPTIONS}
+                                             onChange={field("astcQuality")}/>
+                                {!(hideAsNotReady) &&
+                                <SelectField row label="ASTC Mode" tooltip={ASTC_MODE_TOOLTIP}
+                                             value={params.astcMode} options={ASTC_MODE_OPTIONS}
+                                             onChange={field("astcMode")}/>
+                                }
+                                {!(hideAsNotReady) &&
+                                <CheckboxField row label="Normal Map" tooltip={ASTC_NORMAL_MAP_TOOLTIP}
+                                               value={params.astcNormalMap}
+                                               onChange={(normalMap) => setParams((prev) => ({
+                                                   ...prev,
+                                                   astcNormalMap: normalMap,
+                                                   // Normal maps are linear data; libktx only allows normalMap for non-sRGB.
+                                                   srgb: normalMap ? false : prev.srgb,
+                                               }))}/>
+                                }
+                            </>
+                        )}
+
+                        {(isUastc || isEtc1s || isAstc) &&
+                            <CheckboxField value={params.blockAlign} onChange={field("blockAlign")} label="Pad to block size"
                                            row
                                            tooltip={BLOCK_ALIGN_TOOLTIP}
                             />}
@@ -169,7 +223,7 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                         {/* ETC1S does not support ZSTD or ZLIB compression */}
                         {!isEtc1s && (
                             <>
-                                <SelectField row label="Compression" tooltip={COMPRESSION_TOOLTIP}
+                                <SelectField row label="Extra compression" tooltip={COMPRESSION_TOOLTIP}
                                              value={params.compression} options={COMPRESSION_OPTIONS}
                                              onChange={field("compression")}
                                              valueTooltip={COMPRESSION_VALUE_TOOLTIPS[params.compression]}/>
@@ -214,6 +268,14 @@ export default function ConvertDialog({open, texture}: ConvertDialogProps) {
                             </Button>
                         </span>
                     </Tooltip>
+                )}
+                {!isConverting && (
+                    <Button onClick={() => {
+                        clearConvertOptions();
+                        setParams((prev) => ({...defaultParameters(texture), fileName: prev.fileName}));
+                    }} sx={{marginRight: "auto"}}>
+                        Reset to defaults
+                    </Button>
                 )}
                 <Button onClick={closeDialog}>
                     Close

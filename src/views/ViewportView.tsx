@@ -2,13 +2,13 @@ import {Alert, AlertTitle, Box} from "@mui/material";
 import {useFramework} from "../hooks/useFramework.ts";
 import {useViewerStore} from "../store/viewerStore.ts";
 
-/** Center column: the render canvas. Owns the framework via useFramework. */
+/** The render canvas, centred and scaled down (aspect kept) to fit its container. Owns the framework via useFramework. */
 export function ViewportView() {
     const canvasRef = useFramework();
     const initError = useViewerStore((store) => store.initError);
 
     return (
-        <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+        <Box sx={{width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', p: 1, boxSizing: 'border-box'}}>
             {initError && (
                 <Alert severity="error" sx={{m: 2}}>
                     <AlertTitle>The GPU viewer could not start</AlertTitle>
@@ -19,7 +19,7 @@ export function ViewportView() {
             <canvas
                 ref={canvasRef}
                 aria-label="Texture preview"
-                style={{maxWidth: '95%', maxHeight: '95%', display: initError ? 'none' : undefined, color: 'transparent'}}
+                style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: initError ? 'none' : undefined, color: 'transparent'}}
             />
         </Box>
     );

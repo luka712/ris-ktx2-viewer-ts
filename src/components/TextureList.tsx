@@ -1,103 +1,73 @@
-import {useState} from "react";
 import {
-    Divider,
-    Menu,
-    MenuItem,
-    Paper,
+    IconButton,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemText,
+    Tooltip,
     Typography,
 } from "@mui/material";
-import {SimpleTreeView, TreeItem} from "@mui/x-tree-view";
-import {useTextureStore} from "../store/TextureStore.ts";
+import CloseIcon from "@mui/icons-material/Close";
+import {formatFileSize, useTextureStore} from "../store/TextureStore.ts";
+import {encodingLabel} from "../service/textureInfo.ts";
+import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 
-/**
- * List of loaded textures with selection and context-menu remove.
- */
+/** "768×512 · BC7_UNORM_BLOCK · 1.20 MiB" */
+function secondaryLine(item: ITexture2DContainer): string {
+    const parts: string[] = [];
+    if (item.texture) {
+        parts.push(`${item.texture.width}×${item.texture.height}`);
+    }
+    parts.push(encodingLabel(item, true));
+    if (item.fileSize !== undefined) {
+        parts.push(formatFileSize(item.fileSize));
+    }
+    return parts.join(" · ");
+}
+
+/** Loaded textures: click to select, the ✕ button removes (keyboard and touch reachable). */
 export default function TextureList() {
     const textures = useTextureStore((state) => state.textures);
     const selectedId = useTextureStore((state) => state.selectedId);
     const selectTexture = useTextureStore((state) => state.selectTexture);
     const removeTexture = useTextureStore((state) => state.removeTexture);
 
-    const [contextMenu, setContextMenu] = useState<{
-        mouseX: number;
-        mouseY: number;
-        itemId: string;
-    } | null>(null);
-
-    const handleSelectionChange = (
-        _event: React.SyntheticEvent | null,
-        itemId: string | null,
-    ) => {
-        if (itemId !== null) {
-            selectTexture(itemId);
-        }
-    };
-
-    const handleContextMenu = (event: React.MouseEvent, itemId: string) => {
-        event.preventDefault();
-        setContextMenu({
-            mouseX: event.clientX,
-            mouseY: event.clientY,
-            itemId,
-        });
-    };
-
-    const handleCloseContextMenu = () => setContextMenu(null);
-
-    const handleRemove = () => {
-        if (contextMenu !== null) {
-            removeTexture(contextMenu.itemId);
-        }
-        handleCloseContextMenu();
-    };
+    if (textures.length === 0) {
+        return (
+            <Typography sx={{p: 2}} variant="body2" color="text.secondary">
+                No textures yet. Use Add File or drop PNG, WebP or KTX2 files on the viewport.
+            </Typography>
+        );
+    }
 
     return (
-        <Paper
-            elevation={3}
-            sx={{
-                borderTopLeftRadius: 20,
-                borderTopRightRadius: 20,
-            }}
-        >
-            <Typography sx={{p: 2}} variant="h6">
-                Textures
-            </Typography>
-
-            <Divider/>
-
-            {textures.length === 0 ? (
-                <Typography sx={{p: 2, opacity: 0.6}} variant="body2">
-                    No textures loaded
-                </Typography>
-            ) : (
-                <SimpleTreeView
-                    aria-label="Loaded textures"
-                    selectedItems={selectedId}
-                    onSelectedItemsChange={handleSelectionChange}
+        <List dense aria-label="Loaded textures" sx={{py: 0}}>
+            {textures.map((tex) => (
+                <ListItem
+                    key={tex.id}
+                    disablePadding
+                    secondaryAction={
+                        <Tooltip title="Remove">
+                            <IconButton edge="end" size="small" aria-label={`Remove ${tex.name}`}
+                                        onClick={() => removeTexture(tex.id)}>
+                                <CloseIcon fontSize="small"/>
+                            </IconButton>
+                        </Tooltip>
+                    }
                 >
-                    {textures.map((tex, index) => (
-                        <TreeItem
-                            key={tex.id}
-                            itemId={tex.id}
-                            label={`${index + 1}. ${tex.name}`}
-                            onContextMenu={(event) => handleContextMenu(event, tex.id)}
+                    <ListItemButton selected={tex.id === selectedId} onClick={() => selectTexture(tex.id)}
+                                    aria-current={tex.id === selectedId ? "true" : undefined}>
+                        <ListItemText
+                            primary={tex.name}
+                            secondary={secondaryLine(tex)}
+                            slotProps={{
+                                primary: {noWrap: true, title: tex.name},
+                                secondary: {noWrap: true, sx: {fontSize: 12}},
+                            }}
                         />
-                    ))}
-                </SimpleTreeView>
-            )}
-
-            <Menu
-                open={contextMenu !== null}
-                onClose={handleCloseContextMenu}
-                anchorReference="anchorPosition"
-                anchorPosition={
-                    contextMenu !== null
-                        ? {top: contextMenu.mouseY, left: contextMenu.mouseX}
-                        : undefined
-                }
-            >
-                <MenuItem onClick={handleRemove}>Remove</MenuItem>
-            </Menu>
-        </Paper>
+                    </ListItemButton>
+                </ListItem>
+            ))}
+        </List>
     );
 }

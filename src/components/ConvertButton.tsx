@@ -1,5 +1,6 @@
 import {useState} from "react";
-import {Button, CircularProgress} from "@mui/material";
+import {Button, CircularProgress, IconButton, Tooltip} from "@mui/material";
+import TransformIcon from "@mui/icons-material/Transform";
 import ConvertDialog from "../dialogs/ConvertDialog.tsx";
 import {useSelectedTexture} from "../store/TextureStore.ts";
 import {useConvertStore} from "../store/ConvertStore.ts";
@@ -11,7 +12,7 @@ import {useConvertStore} from "../store/ConvertStore.ts";
  * While a conversion runs, the button shows a spinner and stays clickable so the
  * dialog can show that a conversion is already running.
  */
-export default function ConvertButton() {
+export default function ConvertButton({compact = false}: { compact?: boolean }) {
     const selectedTexture = useSelectedTexture();
     const dialogOpen = useConvertStore((store) => store.dialogOpen);
     const isConverting = useConvertStore((store) => store.isConverting);
@@ -25,16 +26,28 @@ export default function ConvertButton() {
 
     return (
         <>
-            <Button
-                variant="outlined"
-                onClick={handleOpen}
-                // Stays enabled while converting so the dialog can show the running conversion.
-                disabled={!isConverting && !selectedTexture?.image}
-                startIcon={isConverting ? <CircularProgress size={16} color="inherit"/> : undefined}
-                aria-busy={isConverting}
-            >
-                Convert
-            </Button>
+            {compact ? (
+                <Tooltip title={isConverting ? "Conversion running" : "Convert to KTX2"}>
+                    <span>
+                        <IconButton aria-label="Convert to KTX2" onClick={handleOpen}
+                                    disabled={!isConverting && !selectedTexture?.image} aria-busy={isConverting}>
+                            {isConverting ? <CircularProgress size={18} color="inherit"/> : <TransformIcon/>}
+                        </IconButton>
+                    </span>
+                </Tooltip>
+            ) : (
+                <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleOpen}
+                    // Stays enabled while converting so the dialog can show the running conversion.
+                    disabled={!isConverting && !selectedTexture?.image}
+                    startIcon={isConverting ? <CircularProgress size={16} color="inherit"/> : <TransformIcon/>}
+                    aria-busy={isConverting}
+                >
+                    Convert
+                </Button>
+            )}
             <ConvertDialog key={session} open={dialogOpen} texture={selectedTexture}/>
         </>
     );

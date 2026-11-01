@@ -2,8 +2,9 @@
 // disposing the previous ones to the caller, so a failed creation never leaves the store
 // holding a disposed texture.
 
-import {type IFramework, type ITexture2D, TextureDescriptor, type TextureFormat, TextureUsage} from "ris-framework";
-import type {IKtx2Texture} from "ris-ktx2";
+import {type IFramework, type ITexture2D, type ITextureDescriptor, type TextureFormat, TextureUsage} from "ris-framework";
+import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
+import {describeAstcFormat} from "./astcFormats.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 import {decodeImageAsync, isDecodableImage, isKtx2File} from "./textureUtilities.ts";
 
@@ -23,14 +24,37 @@ export function createTextureId(): string {
  */
 export function createTextureFromKtx2(
     framework: IFramework,
-    ktx: IKtx2Texture,
-    descriptor?: TextureDescriptor,
+    ktx: FrameworkKtx2Texture,
+    descriptor?: ITextureDescriptor,
 ): ITexture2D {
+    assertAstcDisplayable(framework, ktx.vkFormat);
     const copy = ktx.createCopy();
     try {
         return framework.textureFactory.createFromKtx2(copy, descriptor);
     } finally {
         copy.delete();
+    }
+}
+
+/**
+ * ris-framework uploads non-Basis KTX2 data as-is (no transcoding) and maps LDR ASTC (UNORM/SRGB) to a GPU
+ * format, using WebGL's WEBGL_compressed_texture_astc. Anything else would fail inside the framework with an
+ * unclear error, so fail early with a clear message.
+ */
+function assertAstcDisplayable(framework: IFramework, vkFormat: number): void {
+    const astc = describeAstcFormat(vkFormat);
+    if (!astc) {
+        return;
+    }
+    if (!framework.graphicsDevice.features.supportsTextureCompressionASTC) {
+        // TODO: Decode ASTC to RGBA8 for display (ris-ktx2 0.2 decodeAstc) on GPUs without ASTC support.
+        throw new Error(`Can't display ASTC ${astc.label}: this GPU/browser does not support ASTC textures `
+            + "(WEBGL_compressed_texture_astc). The KTX2 file itself is fine.");
+    }
+    if (!astc.frameworkSupported) {
+        // TODO: ASTC HDR (SFLOAT) needs framework support.
+        throw new Error(`Can't display ASTC ${astc.label}: the viewer can't display ASTC HDR (SFLOAT) yet. `
+            + "The KTX2 file itself is fine.");
     }
 }
 
@@ -48,8 +72,9 @@ export async function loadTextureFromFileAsync(
                 image.getData(0),
                 image.channels,
                 file.name,
+                // No format: the framework uses renderer.preferredTextureFormat (display color space).
             );
-            return {name: file.name, texture, image, ktxContainer: null};
+            return {name: file.name, texture, image, ktxContainer: null, fileSize: file.size};
         } catch (err) {
             image.dispose();
             throw err;
@@ -63,7 +88,7 @@ export async function loadTextureFromFileAsync(
         const ktx = await framework.ktx2Factory.loadAsync(file);
         try {
             const texture = createTextureFromKtx2(framework, ktx);
-            return {name: file.name, texture, ktxContainer: ktx, image: null};
+            return {name: file.name, texture, ktxContainer: ktx, image: null, fileSize: file.size};
         } catch (err) {
             ktx.delete();
             throw err;
@@ -84,9 +109,8 @@ export function recreateTexture(
     generateMipmaps: boolean,
 ): ITexture2D | null {
     if (container.ktxContainer) {
-        const desc = new TextureDescriptor();
-        desc.textureFormat = textureFormat;
-        desc.generateMipmaps = generateMipmaps;
+        // Basis: transcode target. Non-Basis: X_SRGB/X_UNORM of the file's format (framework throws on others).
+        const desc: ITextureDescriptor = {textureFormat, generateMipmaps};
         // Always use a copy to be able to change texture format.
         return createTextureFromKtx2(framework, container.ktxContainer, desc);
     }

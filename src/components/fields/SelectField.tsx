@@ -4,8 +4,8 @@ import {FieldLayout, type FieldProps} from "./FieldLayout.tsx";
 
 type OptionValue = string | number;
 
-/** A select option: either a plain value (shown as-is) or a value with a display label. */
-export type SelectOption<T extends OptionValue> = T | { value: T; label: string };
+/** A select option: either a plain value (shown as-is) or a value with a display label (optionally disabled). */
+export type SelectOption<T extends OptionValue> = T | { value: T; label: string; disabled?: boolean };
 
 interface SelectFieldProps<T extends OptionValue> extends FieldProps {
     value: T;
@@ -32,8 +32,8 @@ export function SelectField<T extends OptionValue>({
                 title={valueTooltip}
             >
                 {options.map((option) => {
-                    const {value, label} = typeof option === "object" ? option : {value: option, label: String(option)};
-                    return <MenuItem key={value} value={value}>{label}</MenuItem>;
+                    const {value, label, disabled} = typeof option === "object" ? option : {value: option, label: String(option), disabled: false};
+                    return <MenuItem key={value} value={value} disabled={disabled}>{label}</MenuItem>;
                 })}
             </Select>
         </FieldLayout>
