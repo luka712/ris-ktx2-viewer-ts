@@ -15,7 +15,7 @@ import {
     TextureFormat,
     TextureUtilities,
 } from "ris-framework";
-import {KtxDFTransfer, KtxErrorCode, VkFormat} from "ris-ktx2";
+import {KtxDFTransfer, VkFormat} from "ris-ktx2";
 import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
 import {describeAstcFormat} from "./astcFormats.ts";
 import type {ITexture2DContainer, ViewerTexture} from "../model/ITexture2DContainer.ts";
@@ -95,15 +95,6 @@ export function createTextureFromKtx2(
 ): ITexture2D {
     const copy = ktx.createCopy();
     try {
-        const astc = describeAstcFormat(copy.vkFormat);
-        if (astc && !framework.graphicsDevice.features.supportsTextureCompressionASTC) {
-            // No ASTC on this GPU: decode to RGBA8 for display (the file itself is unchanged).
-            const result = copy.decodeAstc();
-            if (result !== KtxErrorCode.SUCCESS) {
-                throw new Error(`Decoding the ASTC ${astc.label} texture for display failed (${KtxErrorCode[result] ?? result}).`);
-            }
-            return framework.textureFactory.createFromKtx2(copy, rgba8Format(colorSpace), colorSpace, generateMipmaps);
-        }
         assertAstcDisplayable(framework, copy.vkFormat);
         return framework.textureFactory.createFromKtx2(copy, textureFormat, colorSpace, generateMipmaps);
     } finally {
@@ -165,8 +156,7 @@ function hasNonPvrtcTranscodeTarget(framework: IFramework): boolean {
 /**
  * A copy of `ktx` the backend can upload as an array, and the texture format to request.
  * PVRTC can't be used for arrays (WebGL: TEXTURE_2D only; WebGPU: no PVRTC): an explicit PVRTC request throws,
- * and Basis data on a GPU whose only transcode target is PVRTC is transcoded to RGBA8 instead. ASTC files on a GPU
- * without ASTC are decoded to RGBA8 for display.
+ * and Basis data on a GPU whose only transcode target is PVRTC is transcoded to RGBA8 instead. ASTC needs GPU support.
  */
 function prepareArrayUpload(
     framework: IFramework,
@@ -189,14 +179,6 @@ function prepareArrayUpload(
                 return {copy, textureFormat: rgba8Format(colorSpace)};
             }
             return {copy, textureFormat};
-        }
-        const astc = describeAstcFormat(copy.vkFormat);
-        if (astc && !framework.graphicsDevice.features.supportsTextureCompressionASTC) {
-            const result = copy.decodeAstc();
-            if (result !== KtxErrorCode.SUCCESS) {
-                throw new Error(`Decoding the ASTC ${astc.label} texture array for display failed (${KtxErrorCode[result] ?? result}).`);
-            }
-            return {copy, textureFormat: rgba8Format(colorSpace)};
         }
         assertAstcDisplayable(framework, copy.vkFormat);
         if (!UNCOMPRESSED_VK_FORMATS.has(copy.vkFormat)) {
@@ -224,7 +206,6 @@ function assertAstcDisplayable(framework: IFramework, vkFormat: number): void {
         return;
     }
     if (!framework.graphicsDevice.features.supportsTextureCompressionASTC) {
-        // 2D textures and arrays decode to RGBA8 before getting here; this only guards other callers.
         throw new Error(`Can't display ASTC ${astc.label}: this GPU/browser does not support ASTC textures `
             + "(WEBGL_compressed_texture_astc). The KTX2 file itself is fine.");
     }

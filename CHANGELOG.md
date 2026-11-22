@@ -9,27 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **WebGPU**: switch between WebGL2 and WebGPU in the header.
-- **Texture arrays**: select several images and convert them to separate files or one KTX2 texture array, with a layer picker in the viewer.
-- **GPU info**: supported formats and limits, with a copy button.
-- Conversions run in the background and can be cancelled.
-- Generate mipmaps on GPU works on WebGPU too.
-- ASTC files now display on GPUs without ASTC support.
-- Texture Format lists sRGB and linear versions of each format, per texture (images default to sRGB, KTX2 to the file's color space).
+- **Texture arrays**: convert several images into one KTX2 texture array, with a layer picker in the viewer.
+- **Texture Format per texture**: pick sRGB or linear in the Inspector.
+- Copy button for GPU info.
 
 ### Changed
 
-- The Display color space switch (sRGB default, or Linear) now only sets the screen output; it no longer changes texture formats.
+- Display color space defaults to sRGB and only affects the screen output.
+- Closing the Convert dialog keeps the conversion running.
 
 ### Fixed
 
-- sRGB images and textures now display with correct colors (no longer too dark).
-- A failed encode now shows an error instead of saving a broken file.
+- A failed encode shows an error instead of saving a broken file.
 - An empty file name no longer saves a file called `.ktx2`.
-- Texture arrays with more layers than the GPU supports show a clear error.
-
-### Known issues
-
-- Mipmaps for sRGB images are slightly dark (not gamma-corrected).
 
 ## [0.2.0] - 2026-11-01
 
