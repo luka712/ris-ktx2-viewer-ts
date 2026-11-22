@@ -25,6 +25,6 @@ export class ConvertParameters {
      * Mark the output as sRGB color data (R8G8B8A8_SRGB source; libktx carries it to the Basis DFD
      * transfer function and to the ASTC_*_SRGB_BLOCK format). Off for linear data such as normal maps.
      */
-    /** Create an sRGB file. Off by default; the viewer works in linear color space (see displayColorSpace). */
+    /** Create an sRGB file. Off by default. The viewer uploads it with sRGB formats by default. */
     public srgb = false;
 }

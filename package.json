@@ -1,7 +1,7 @@
 {
   "name": "ris-ktx2-viewer",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -15,11 +15,12 @@
     "@mui/icons-material": "^9.2.0",
     "@mui/material": "^9.2.0",
     "@mui/x-tree-view": "^9.10.0",
+    "gl-matrix": "^3.4.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-dropzone": "^19.1.1",
-    "ris-framework": "^0.3.0",
-    "ris-ktx2": "^0.2.0",
+    "ris-framework": "^0.4.0",
+    "ris-ktx2": "^0.3.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

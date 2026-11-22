@@ -4,7 +4,8 @@ import {useViewerStore} from "../store/viewerStore.ts";
 
 /** The render canvas, centred and scaled down (aspect kept) to fit its container. Owns the framework via useFramework. */
 export function ViewportView() {
-    const canvasRef = useFramework();
+    const backend = useViewerStore((store) => store.backend);
+    const canvasHostRef = useFramework(backend);
     const initError = useViewerStore((store) => store.initError);
 
     return (
@@ -15,11 +16,11 @@ export function ViewportView() {
                     {initError}. This viewer needs WebGL2.
                 </Alert>
             )}
-            {/* Size is set by useFramework (initial size, then the selected texture's size). */}
-            <canvas
-                ref={canvasRef}
-                aria-label="Texture preview"
-                style={{maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: initError ? 'none' : undefined, color: 'transparent'}}
+            {/* useFramework creates a fresh canvas in this host on every mount (a disposed WebGL canvas can't be
+                reused) and sets its size (initial size, then the selected texture's size). */}
+            <div
+                ref={canvasHostRef}
+                style={{display: initError ? 'none' : 'contents'}}
             />
         </Box>
     );

@@ -7,8 +7,12 @@ export default defineConfig({
     worker: {
         format: 'es',
     },
-    // gl-matrix is a transitive dependency of ris-framework and npm hoists it to the top-level
-    // node_modules, so it resolves without an alias. TODO: it is imported directly
-    // (useFramework.ts, Ktx2Converter.ts) but not declared in package.json; add it as a direct
-    // dependency (same version as ris-framework) so it doesn't rely on hoisting.
+    // file:../ris-framework-ts has its own node_modules/ris-ktx2 (same 0.3.0-dev.18).
+    // Dedupe so the bundle uses the viewer's copy only.
+    resolve: {
+        dedupe: ['ris-ktx2'],
+    },
+    // gl-matrix is a direct dependency (same ^3.4.4 as ris-framework). Needed because the
+    // viewer imports it (useFramework.ts, Ktx2Converter.ts) and file:../ris-framework-ts
+    // does not hoist the framework's copy into this node_modules.
 })

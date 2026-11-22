@@ -1,17 +1,12 @@
-import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
-
+/**
+ * Replaces the trailing extension of `fileName` with `ext` (e.g. ".ktx2"), or appends `ext` when there is none.
+ * A leading dot (".hidden") is not treated as an extension. Example: "a.b.png" → "a.b.ktx2".
+ */
 export function changeFileExtension(fileName: string, ext: string): string {
-
-    const extIndex = fileName?.lastIndexOf('.') ?? 0;
-    if(extIndex > 0) {
-        const ext = fileName?.substring(extIndex) ?? "";
-        fileName = fileName?.replace(ext, KTX2_FILE_EXTENSION) ?? "";
-    }else {
-        fileName = fileName + ext;
-    }
-
-    return fileName;
-
+    const name = fileName ?? "";
+    const extIndex = name.lastIndexOf(".");
+    const base = extIndex > 0 ? name.slice(0, extIndex) : name;
+    return base + ext;
 }
 
 /**

@@ -1,11 +1,11 @@
-// ktx.worker.ts — runs Basis/UASTC encode + optional supercompression off the main thread.
-// Receives mip bytes + create info; returns transferable KTX2 file bytes (no DOM, no live WASM objects).
+// ktx.worker.ts — runs Basis/UASTC/ASTC encode + optional supercompression off the main thread.
+// Receives image bytes per layer and mip level + create info; returns transferable KTX2 file bytes (no DOM, no live WASM objects).
 // Type-checked with the WebWorker lib via tsconfig.worker.json (excluded from tsconfig.app.json).
 
-import {type IKtx2Texture, Ktx2Factory, KtxCreateStorage} from "ris-ktx2";
+import {type IKtx2Texture, Ktx2Factory} from "ris-ktx2";
 import {changeFileExtension} from "./formatter.ts";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
-import {encodeKtx2, toStandaloneBytes} from "./Ktx2Encoder.ts";
+import {createKtx2FromImages, encodeKtx2, toStandaloneBytes} from "./Ktx2Encoder.ts";
 import type {KtxWorkerRequest, KtxWorkerResponse} from "./ktxWorkerProtocol.ts";
 
 function post(message: KtxWorkerResponse, transfer: Transferable[] = []): void {
@@ -39,14 +39,12 @@ self.addEventListener("message", async (event: MessageEvent<KtxWorkerRequest>) =
 
     let tex: IKtx2Texture | null = null;
     try {
-        const {id, ktxCreateInfo, dataPerMipLevel, convertParameters, verbose} = request;
+        const {id, ktxCreateInfo, dataPerLayer, convertParameters, verbose} = request;
         const name = changeFileExtension(convertParameters.fileName, KTX2_FILE_EXTENSION);
         const factory = await factoryPromise;
 
-        tex = factory.create(ktxCreateInfo, KtxCreateStorage.ALLOC_STORAGE);
-        for (let i = 0; i < dataPerMipLevel.length; i++) {
-            tex.setImageFromMemory(i, 0, 0, new Uint8Array(dataPerMipLevel[i]));
-        }
+        tex = createKtx2FromImages(factory, ktxCreateInfo,
+            dataPerLayer.map((levels) => levels.map((buffer) => new Uint8Array(buffer))));
 
         encodeKtx2(tex, convertParameters, verbose);
 

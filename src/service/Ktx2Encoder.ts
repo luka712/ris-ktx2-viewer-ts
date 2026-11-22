@@ -3,11 +3,14 @@
 
 import {
     KtxAstcQualityLevel,
+    type IKtx2Factory,
     type IKtx2Texture,
     type IKtxAstcParams,
     type IKtxBasisParams,
+    type IKtxTextureCreateInfo,
     KtxAstcBlockDimension,
     KtxAstcEncoderMode,
+    KtxCreateStorage,
     KtxErrorCode,
 } from "ris-ktx2";
 import type {ConvertParameters} from "../model/ConvertParameters.ts";
@@ -79,8 +82,13 @@ export function buildAstcParams(convertParameters: ConvertParameters, verbose: b
     };
 }
 
-// TODO: compressBasis / deflateZstd / deflateZlib return a KtxErrorCode that is ignored here (as before),
-// so a failed encode is not reported. Check the codes and throw once the success value is confirmed.
+/** Throws when a libktx call did not return SUCCESS, so a failed step never produces a broken file. */
+export function assertKtxSuccess(result: KtxErrorCode, step: string): void {
+    if (result !== KtxErrorCode.SUCCESS) {
+        throw new Error(`${step} failed (${KtxErrorCode[result] ?? result})`);
+    }
+}
+
 /**
  * Basis-encodes (UASTC / ETC1S) and then supercompresses (Zstd / ZLib) the texture in place.
  * ASTC-encodes (needs the uncompressed RGBA8 input the converter creates).
@@ -89,15 +97,13 @@ export function buildAstcParams(convertParameters: ConvertParameters, verbose: b
 export function encodeKtx2(tex: IKtx2Texture, params: ConvertParameters, verbose: boolean): void {
     const basisParams = buildBasisParams(params, verbose);
     if (basisParams) {
-        tex.compressBasis(basisParams);
+        const name = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC ? "UASTC" : "ETC1S";
+        assertKtxSuccess(tex.compressBasis(basisParams), `${name} encoding`);
     }
 
     const astcParams = buildAstcParams(params, verbose);
     if (astcParams) {
-        const result = tex.compressAstc(astcParams);
-        if (result !== KtxErrorCode.SUCCESS) {
-            throw new Error(`ASTC encoding failed (${KtxErrorCode[result] ?? result})`);
-        }
+        assertKtxSuccess(tex.compressAstc(astcParams), "ASTC encoding");
     }
 
     const supercompressible = params.encoding === KTX_ENCODING_BASIS_UNIVERSAL_UASTC
@@ -107,10 +113,36 @@ export function encodeKtx2(tex: IKtx2Texture, params: ConvertParameters, verbose
         return;
     }
     if (params.compression === KTX_COMPRESSION_ZSTANDARD) {
-        tex.deflateZstd(params.compressionLevelZstd);
+        assertKtxSuccess(tex.deflateZstd(params.compressionLevelZstd), "Zstandard supercompression");
     } else if (params.compression === KTX_COMPRESSION_ZLIB) {
-        tex.deflateZlib(params.compressionLevelZLib);
+        assertKtxSuccess(tex.deflateZlib(params.compressionLevelZLib), "ZLib supercompression");
     }
+}
+
+/**
+ * Creates the uncompressed RGBA8 texture to encode and fills every image.
+ * `dataPerLayer[layer][level]` holds the RGBA8 bytes of one image; one layer for a plain 2D texture,
+ * N layers (with `createInfo.isArray`) for a 2D texture array. The caller deletes the texture.
+ * Throws (and deletes the texture) when libktx rejects an image, e.g. a size that doesn't match.
+ */
+export function createKtx2FromImages(
+    factory: IKtx2Factory,
+    createInfo: IKtxTextureCreateInfo,
+    dataPerLayer: readonly (readonly ArrayBufferView[])[],
+): IKtx2Texture {
+    const tex = factory.create(createInfo, KtxCreateStorage.ALLOC_STORAGE);
+    try {
+        for (let layer = 0; layer < dataPerLayer.length; layer++) {
+            const levels = dataPerLayer[layer];
+            for (let level = 0; level < levels.length; level++) {
+                assertKtxSuccess(tex.setImageFromMemory(level, layer, 0, levels[level]), `Setting layer ${layer}, mip ${level}`);
+            }
+        }
+    } catch (err) {
+        tex.delete();
+        throw err;
+    }
+    return tex;
 }
 
 /**

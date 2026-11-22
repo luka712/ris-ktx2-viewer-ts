@@ -3,13 +3,13 @@ import type {ConvertParameters} from "../model/ConvertParameters.ts";
 
 // Cancel is `worker.terminate()` on the main thread, not a message.
 
-/** Main → worker: encode one texture. The mip ArrayBuffers are transferred. */
+/** Main → worker: encode one texture (a 2D texture or a 2D texture array). The image ArrayBuffers are transferred. */
 export interface KtxWorkerConvertRequest {
     type: "convert";
     id: number;
     ktxCreateInfo: IKtxTextureCreateInfo;
-    /** One ArrayBuffer of RGBA8 pixels per mip level (transferred). */
-    dataPerMipLevel: ArrayBuffer[];
+    /** RGBA8 pixels as `dataPerLayer[layer][mipLevel]` (transferred). One layer unless `ktxCreateInfo.isArray`. */
+    dataPerLayer: ArrayBuffer[][];
     convertParameters: ConvertParameters;
     /** Pass libktx verbose logging through (dev builds only). */
     verbose: boolean;
