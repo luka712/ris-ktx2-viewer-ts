@@ -1,4 +1,4 @@
-import {type IKtxTextureCreateInfo, Ktx2Factory, KtxCreateStorage, VkFormat} from "ris-ktx2";
+import {type IKtxTextureCreateInfo, Ktx2Factory, VkFormat} from "ris-ktx2";
 import type {FrameworkKtx2Texture} from "../model/FrameworkKtx2.ts";
 import {AlignUtilities, type IFramework, type RawImageData} from "ris-framework";
 import {vec2} from "gl-matrix";
@@ -7,11 +7,12 @@ import type {ConvertParameters} from "../model/ConvertParameters.ts";
 import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
 import {downloadKtx2} from "./textureUtilities.ts";
 import {changeFileExtension} from "./formatter.ts";
-import {encodeKtx2, isBasisEncoding, toStandaloneBytes} from "./Ktx2Encoder.ts";
+import {createKtx2FromImages, encodeKtx2, isBasisEncoding, toStandaloneBytes} from "./Ktx2Encoder.ts";
 import {mipLevelCount} from "./mipLevels.ts";
 import {parseAstcBlockSize} from "./astcFormats.ts";
 import {KTX_ENCODING_ASTC} from "../model/Ktx2EncodingConstants.ts";
 import type {KtxWorkerConvertRequest, KtxWorkerResponse} from "./ktxWorkerProtocol.ts";
+import {arraySourceProblem} from "./textureArray.ts";
 import KtxWorker from "./ktx.worker.ts?worker";
 
 export interface ConvertResult {
@@ -20,6 +21,8 @@ export interface ConvertResult {
     name: string | null,
     /** Byte length of the encoded KTX2 file. */
     fileSize?: number,
+    /** KTX2 header layerCount of the written file: 0 for a 2D texture, N for an N-layer texture array. */
+    layerCount?: number,
 }
 
 /** The KTX worker could not start (module load or libktx init). Safe to fall back to the main thread. */
@@ -54,11 +57,23 @@ export function isAbortError(err: unknown): boolean {
     return err instanceof DOMException && err.name === "AbortError";
 }
 
-type PreparedSource = {
+/** One source image after block alignment and mip generation. */
+type PreparedLayer = {
+    /** Block-aligned image with its generated mip levels (may be `image` itself). */
     sourceImage: RawImageData;
+    /** The texture's own image; never disposed here. */
     image: RawImageData;
     baseWidth: number;
     baseHeight: number;
+};
+
+/** Everything the encoder needs: one layer for a 2D texture, N layers (same size) for a texture array. */
+type PreparedSource = {
+    layers: PreparedLayer[];
+    isArray: boolean;
+    baseWidth: number;
+    baseHeight: number;
+    numLevels: number;
     fileName: string;
 };
 
@@ -85,13 +100,13 @@ function alignmentBlock(convertParameters: ConvertParameters): { width: number; 
  * Block-align Basis formats to 4×4 and ASTC to its block size and compute mip count when requested.
  * Mip count is always derived when generateMipmaps is on (not only after a resize).
  */
-async function prepareSourceImageAsync(
+async function prepareLayerAsync(
     fw: IFramework,
     selectedTexture: ITexture2DContainer,
     convertParameters: ConvertParameters,
-): Promise<PreparedSource> {
+): Promise<PreparedLayer> {
     if (!selectedTexture.image) {
-        throw new Error("No texture selected");
+        throw new Error(`${selectedTexture.name} has no source image to convert`);
     }
 
     const encoding = convertParameters.encoding;
@@ -134,15 +149,58 @@ async function prepareSourceImageAsync(
         sourceImage = mipmaped;
     }
 
-    const fileName = changeFileExtension(convertParameters.fileName, KTX2_FILE_EXTENSION);
+    return {sourceImage, image, baseWidth, baseHeight};
+}
 
-    return {sourceImage, image, baseWidth, baseHeight, fileName};
+function disposeLayer(layer: PreparedLayer) {
+    if (layer.sourceImage !== layer.image) {
+        layer.sourceImage.dispose();
+    }
+}
+
+/**
+ * Prepares every source image (in order; one per array layer). With `isArray` the textures must pass
+ * {@link arraySourceProblem}, so every layer ends up with the same size and mip count.
+ */
+async function prepareSourcesAsync(
+    fw: IFramework,
+    textures: readonly ITexture2DContainer[],
+    convertParameters: ConvertParameters,
+    isArray: boolean,
+): Promise<PreparedSource> {
+    if (textures.length === 0) {
+        throw new Error("No texture selected");
+    }
+    if (isArray) {
+        const problem = arraySourceProblem(textures);
+        if (problem) {
+            throw new Error(`Can't create a texture array: ${problem}`);
+        }
+    }
+
+    const layers: PreparedLayer[] = [];
+    try {
+        for (const texture of textures) {
+            layers.push(await prepareLayerAsync(fw, texture, convertParameters));
+        }
+    } catch (err) {
+        layers.forEach(disposeLayer);
+        throw err;
+    }
+
+    const first = layers[0];
+    return {
+        layers,
+        isArray,
+        baseWidth: first.baseWidth,
+        baseHeight: first.baseHeight,
+        numLevels: first.sourceImage.numLevels,
+        fileName: changeFileExtension(convertParameters.fileName, KTX2_FILE_EXTENSION),
+    };
 }
 
 function disposePrepared(prepared: PreparedSource | null) {
-    if (prepared && prepared.sourceImage !== prepared.image) {
-        prepared.sourceImage.dispose();
-    }
+    prepared?.layers.forEach(disposeLayer);
 }
 
 // TODO: Mipmaps come from ris-framework generateMipmapsAsync, which filters the stored (sRGB-encoded) values
@@ -154,25 +212,21 @@ function createInfoFor(prepared: PreparedSource, srgb: boolean): IKtxTextureCrea
         baseHeight: prepared.baseHeight,
         // The source format decides the color space of every encoding (raw, Basis DFD transfer, ASTC block format).
         vkFormat: srgb ? VkFormat.R8G8B8A8_SRGB : VkFormat.R8G8B8A8_UNORM,
-        numLevels: prepared.sourceImage.numLevels,
+        numLevels: prepared.numLevels,
+        numLayers: prepared.layers.length,
+        isArray: prepared.isArray,
     };
 }
 
-function mipLevelBytes(fw: IFramework, sourceImage: RawImageData, level: number): Uint8ClampedArray<ArrayBuffer> {
-    const levelData = sourceImage.getData(level);
-    if (!(levelData instanceof HTMLImageElement)) {
-        throw new Error("Unsupported image type");
-    }
-    return fw.imageProcessor.getBytesFromHtmlImage(levelData);
+/** RGBA8 bytes of every image as `[layer][mipLevel]`. */
+function collectImageBytes(prepared: PreparedSource): Uint8Array[][] {
+    return prepared.layers.map(({sourceImage}) =>
+        Array.from({length: prepared.numLevels}, (_, level) => sourceImage.getData(level) as Uint8Array));
 }
 
-/** Standalone RGBA8 copies of every mip level, so the ArrayBuffers can be transferred to the worker. */
-function collectMipLevelBuffers(fw: IFramework, sourceImage: RawImageData): ArrayBuffer[] {
-    const buffers: ArrayBuffer[] = [];
-    for (let i = 0; i < sourceImage.numLevels; i++) {
-        buffers.push(toStandaloneBytes(mipLevelBytes(fw, sourceImage, i)).buffer);
-    }
-    return buffers;
+/** Standalone RGBA8 copies of every image, so the ArrayBuffers can be transferred to the worker. */
+function collectImageBuffers(prepared: PreparedSource): ArrayBuffer[][] {
+    return collectImageBytes(prepared).map((levels) => levels.map((bytes) => toStandaloneBytes(bytes).buffer));
 }
 
 /** Reloads written KTX2 bytes as a texture for the list (same rule for worker and main-thread paths). */
@@ -259,16 +313,15 @@ let nextRequestId = 0;
 function encodeInWorkerAsync(
     worker: Worker,
     prepared: PreparedSource,
-    fw: IFramework,
     convertParameters: ConvertParameters,
     signal?: AbortSignal,
 ): Promise<EncodedKtx2> {
-    const dataPerMipLevel = collectMipLevelBuffers(fw, prepared.sourceImage);
+    const dataPerLayer = collectImageBuffers(prepared);
     const request: KtxWorkerConvertRequest = {
         type: "convert",
         id: ++nextRequestId,
         ktxCreateInfo: createInfoFor(prepared, convertParameters.srgb),
-        dataPerMipLevel,
+        dataPerLayer,
         convertParameters,
         verbose: VERBOSE,
     };
@@ -314,7 +367,7 @@ function encodeInWorkerAsync(
         worker.addEventListener("message", handleMessage);
         worker.addEventListener("error", handleError);
         worker.addEventListener("messageerror", handleMessageError);
-        worker.postMessage(request, dataPerMipLevel);
+        worker.postMessage(request, dataPerLayer.flat());
     });
 }
 
@@ -338,17 +391,13 @@ function getEncoderFactoryAsync(): Promise<Ktx2Factory> {
 
 /** Encodes on the main thread (blocks the UI while libktx runs). Used as the fallback. */
 async function encodeOnMainThreadAsync(
-    fw: IFramework,
     prepared: PreparedSource,
     convertParameters: ConvertParameters,
 ): Promise<EncodedKtx2> {
     const factory = await getEncoderFactoryAsync();
     const createInfo = createInfoFor(prepared, convertParameters.srgb);
-    const tex = factory.create(createInfo, KtxCreateStorage.ALLOC_STORAGE);
+    const tex = createKtx2FromImages(factory, createInfo, collectImageBytes(prepared));
     try {
-        for (let i = 0; i < prepared.sourceImage.numLevels; i++) {
-            tex.setImageFromMemory(i, 0, 0, mipLevelBytes(fw, prepared.sourceImage, i));
-        }
         encodeKtx2(tex, convertParameters, VERBOSE);
         // Copy out of the WASM heap before the texture is deleted.
         return {bytes: toStandaloneBytes(tex.writeToMemory()), name: prepared.fileName};
@@ -368,11 +417,13 @@ function finishConversion(
 ): ConvertResult {
     const name = resolveOutputName ? resolveOutputName(encoded.name) : encoded.name;
     downloadKtx2(encoded.bytes, name);
+    const ktx = loadEncodedKtx2(fw, encoded.bytes);
     return {
         success: true,
-        ktx: loadEncodedKtx2(fw, encoded.bytes),
+        ktx,
         name,
         fileSize: encoded.bytes.byteLength,
+        layerCount: ktx.isArray ? ktx.numLayers : 0,
     };
 }
 
@@ -404,6 +455,30 @@ export async function convertToKtx2UsingWorkerAsync(
     convertParameters: ConvertParameters,
     options: ConvertOptions = {},
 ): Promise<ConvertResult> {
+    return convertUsingWorkerAsync(fw, [selectedTexture], convertParameters, options, false);
+}
+
+/**
+ * Like {@link convertToKtx2UsingWorkerAsync}, but writes one KTX2 2D texture array with one layer per
+ * texture, in the given order. The textures must be decoded images of the same size
+ * (see {@link arraySourceProblem}); otherwise this rejects with the reason.
+ */
+export async function convertArrayToKtx2UsingWorkerAsync(
+    fw: IFramework,
+    textures: readonly ITexture2DContainer[],
+    convertParameters: ConvertParameters,
+    options: ConvertOptions = {},
+): Promise<ConvertResult> {
+    return convertUsingWorkerAsync(fw, textures, convertParameters, options, true);
+}
+
+async function convertUsingWorkerAsync(
+    fw: IFramework,
+    textures: readonly ITexture2DContainer[],
+    convertParameters: ConvertParameters,
+    options: ConvertOptions,
+    isArray: boolean,
+): Promise<ConvertResult> {
     const {signal, onMainThreadFallback, resolveOutputName} = options;
     signal?.throwIfAborted();
 
@@ -421,7 +496,7 @@ export async function convertToKtx2UsingWorkerAsync(
     let worker: Worker | null = null;
     let prepared: PreparedSource | null = null;
     try {
-        prepared = await prepareSourceImageAsync(fw, selectedTexture, convertParameters);
+        prepared = await prepareSourcesAsync(fw, textures, convertParameters, isArray);
         signal?.throwIfAborted();
 
         // The timeout starts once the (main-thread) preparation is done, so a long resize can't trip it.
@@ -438,13 +513,13 @@ export async function convertToKtx2UsingWorkerAsync(
             onMainThreadFallback?.();
             await yieldToBrowserAsync();
             signal?.throwIfAborted();
-            const encoded = await encodeOnMainThreadAsync(fw, prepared, convertParameters);
+            const encoded = await encodeOnMainThreadAsync(prepared, convertParameters);
             return finishConversion(fw, encoded, resolveOutputName);
         } finally {
             window.clearTimeout(readyTimeoutId);
         }
 
-        const encoded = await encodeInWorkerAsync(worker, prepared, fw, convertParameters, signal);
+        const encoded = await encodeInWorkerAsync(worker, prepared, convertParameters, signal);
         signal?.throwIfAborted();
         return finishConversion(fw, encoded, resolveOutputName);
     } finally {
@@ -468,9 +543,9 @@ export async function convertToKtx2Async(
     selectedTexture: ITexture2DContainer,
     convertParameters: ConvertParameters,
 ): Promise<ConvertResult> {
-    const prepared = await prepareSourceImageAsync(fw, selectedTexture, convertParameters);
+    const prepared = await prepareSourcesAsync(fw, [selectedTexture], convertParameters, false);
     try {
-        return finishConversion(fw, await encodeOnMainThreadAsync(fw, prepared, convertParameters));
+        return finishConversion(fw, await encodeOnMainThreadAsync(prepared, convertParameters));
     } finally {
         disposePrepared(prepared);
     }

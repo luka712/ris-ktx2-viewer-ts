@@ -1,6 +1,8 @@
 // Display strings for the selected texture (inspector, status bar, texture list). DOM-free.
 
+import {ColorSpace} from "ris-framework";
 import {VkFormat} from "ris-ktx2";
+import {fileColorSpace} from "./textureResources.ts";
 import {describeAstcFormat} from "./astcFormats.ts";
 import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 
@@ -41,10 +43,9 @@ export function encodingLabel(container: ITexture2DContainer | null | undefined,
 }
 
 /**
- * sRGB / Linear from the VkFormat name. Basis data reports UNDEFINED and the framework's ris-ktx2 0.1
- * does not expose the DFD transfer function, so it shows "—". Decoded images are sRGB by convention.
+ * sRGB / Linear from the KTX2 DFD transfer function (Basis too), else the VkFormat name.
+ * Decoded images are sRGB by convention.
  */
-/** Color space stored in the file (not how it is displayed; see displayColorSpace). */
 export function colorSpaceLabel(container: ITexture2DContainer | null | undefined): string {
     if (!container) {
         return NO_VALUE;
@@ -53,9 +54,5 @@ export function colorSpaceLabel(container: ITexture2DContainer | null | undefine
     if (!ktx) {
         return SRGB_LABEL;
     }
-    if (ktx.vkFormat === VkFormat.UNDEFINED) {
-        // TODO: Show sRGB/Linear for Basis textures once the DFD transfer function is exposed.
-        return NO_VALUE;
-    }
-    return (VkFormat[ktx.vkFormat] ?? "").includes("SRGB") ? SRGB_LABEL : LINEAR_LABEL;
+    return fileColorSpace(ktx) === ColorSpace.SRGB ? SRGB_LABEL : LINEAR_LABEL;
 }

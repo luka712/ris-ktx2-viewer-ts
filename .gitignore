@@ -6,3 +6,6 @@ dist
 tsconfig.app.tsbuildinfo
 tsconfig.node.tsbuildinfo
 .netlify/
+
+# Local AI agent notes (see ai-guide/README.md)
+ai-guide/
