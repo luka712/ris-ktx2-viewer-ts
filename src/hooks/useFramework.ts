@@ -107,13 +107,25 @@ function ktx2InitializeParams(device: IGraphicsDevice): IKtx2FactoryInitializePa
     return {};
 }
 
+function throwIfAborted(signal: AbortSignal) {
+    if (signal.aborted) {
+        throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+}
+
 /**
  * Creates and initializes a framework on the canvas with the given backend. Rejects if the backend can't start
  * (ris-framework 0.4 has no WebGPU → WebGL fallback; the caller does that).
  * Each mount gets its own framework and disposes it on unmount (Framework.dispose() stops the render loop
  * and input). A canvas keeps the context type it got first, so the viewport uses a new canvas per backend.
+ * Stops after each await if `signal` is aborted, so a remount does not re-point the shared libktx module.
  */
-async function createFrameworkAsync(canvas: HTMLCanvasElement, backend: ViewerBackend, register: (fw: IFramework) => void): Promise<IFramework> {
+async function createFrameworkAsync(
+    canvas: HTMLCanvasElement,
+    backend: ViewerBackend,
+    register: (fw: IFramework) => void,
+    signal: AbortSignal,
+): Promise<IFramework> {
     canvas.width = INITIAL_CANVAS_WIDTH;
     canvas.height = INITIAL_CANVAS_HEIGHT;
     const fw: IFramework = new Framework({
@@ -133,9 +145,13 @@ async function createFrameworkAsync(canvas: HTMLCanvasElement, backend: ViewerBa
     register(fw);
     // Creates the WebGL2 context / WebGPU device (rejects if unsupported) and starts the render loop.
     await fw.initializeAsync();
+    // Stop before touching the realm-wide libktx module or the disposed device (StrictMode remount, backend
+    // switch, layout remount). Cleanup has already aborted the signal and disposed `fw`.
+    throwIfAborted(signal);
     // initializeAsync starts loading libktx without the device and doesn't wait for it; KTX2 loads need it ready.
     // libktx is shared per realm, so this also re-points it at the new device after a backend switch.
     await fw.ktx2Factory?.initializeAsync(ktx2InitializeParams(fw.graphicsDevice));
+    throwIfAborted(signal);
     // Output color space and a clear color that shows the same gray in both modes. Read again here: the switch may
     // have changed while this framework was initializing.
     applyOutputColorSpace(fw, useViewerStore.getState().displayColorSpace);
@@ -254,12 +270,13 @@ export function useFramework(backend: ViewerBackend) {
         let unmounted = false;
         let fw: IFramework | null = null;
         let stopViewer: (() => void) | null = null;
+        const controller = new AbortController();
 
         void (async () => {
             try {
                 const created = await createFrameworkAsync(canvas, backend, (value) => {
                     fw = value;
-                });
+                }, controller.signal);
                 if (unmounted) {
                     return;
                 }
@@ -280,6 +297,7 @@ export function useFramework(backend: ViewerBackend) {
 
         return () => {
             unmounted = true;
+            controller.abort();
             stopViewer?.();
             (fw as IFramework | null)?.dispose();
             canvas.remove();

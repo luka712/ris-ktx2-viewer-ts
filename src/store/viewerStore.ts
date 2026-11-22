@@ -179,25 +179,44 @@ export const useViewerStore = create<ViewerStore>((set, get) => ({
 
 /**
  * The current framework, or the next one once it is set (e.g. while the backend is being switched).
- * Rejects when the signal aborts.
+ * Rejects when the signal aborts, or when initialization has failed (`initError`) and no framework is coming.
  */
 export function waitForFrameworkAsync(signal?: AbortSignal): Promise<IFramework> {
-    const current = useViewerStore.getState().framework;
-    if (current) {
-        return Promise.resolve(current);
-    }
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+            return;
+        }
+
+        let settled = false;
+        const finish = (action: () => void) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            unsubscribe();
+            signal?.removeEventListener("abort", onAbort);
+            action();
+        };
+        const onAbort = () => {
+            finish(() => reject(signal?.reason ?? new DOMException("Aborted", "AbortError")));
+        };
+
+        // Subscribe first, then re-read: a framework set between a getState() and subscribe would otherwise be missed.
         const unsubscribe = useViewerStore.subscribe((state) => {
             if (state.framework) {
-                unsubscribe();
-                signal?.removeEventListener("abort", onAbort);
-                resolve(state.framework);
+                finish(() => resolve(state.framework as IFramework));
+            } else if (state.initError) {
+                finish(() => reject(new Error(state.initError as string)));
             }
         });
-        const onAbort = () => {
-            unsubscribe();
-            reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
-        };
         signal?.addEventListener("abort", onAbort, {once: true});
+
+        const {framework, initError} = useViewerStore.getState();
+        if (framework) {
+            finish(() => resolve(framework));
+        } else if (initError) {
+            finish(() => reject(new Error(initError)));
+        }
     });
 }

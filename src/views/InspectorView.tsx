@@ -16,6 +16,7 @@ import {
 } from "../store/TextureStore.ts";
 import {useViewerStore} from "../store/viewerStore.ts";
 import {InfoRow, SectionTitle} from "../components/InfoSection.tsx";
+import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
 
 const FORMAT_TOOLTIP = "GPU texture format used to display this texture. _SRGB formats treat the data as sRGB color (decoded when sampled); the others (UNORM) as linear data, e.g. normal maps. Defaults to sRGB for images and to the file's own color space for KTX2. Compressed formats reduce memory usage, at the expense of quality.";
 const MIPMAPS_TOOLTIP = "Generates mipmaps on the GPU at display time (they are not stored in the file). Smaller versions of the texture improve quality and reduce sampling artifacts when it is shown at reduced sizes.";
@@ -89,10 +90,24 @@ function isSquarePowerOfTwo(width: number, height: number): boolean {
 /**
  * Right panel: Info (read-only details of the selected texture) and Display (GPU format, mipmaps).
  * View, filter and mip level live in the viewport toolbar.
+ * The selected-texture body is keyed by id so a leftover format/mipmaps error is not shown on the next texture.
  */
 export function InspectorView() {
     const selectedTexture = useSelectedTexture();
-    const texture = selectedTexture?.texture;
+    if (!selectedTexture) {
+        return (
+            <Box sx={{p: 2}}>
+                <Typography variant="body2" color="text.secondary">
+                    Select or add a texture to see its details.
+                </Typography>
+            </Box>
+        );
+    }
+    return <InspectorBody key={selectedTexture.id} selectedTexture={selectedTexture}/>;
+}
+
+function InspectorBody({selectedTexture}: {selectedTexture: ITexture2DContainer}) {
+    const texture = selectedTexture.texture;
     const {textureFormat, generateMipmaps, resolution, size, mipLevels} = textureDetails(texture);
     const setTextureFormat = useTextureStore((store) => store.setTextureFormat);
     const setGenerateMipmaps = useTextureStore((store) => store.setGenerateMipmaps);
@@ -112,16 +127,6 @@ export function InspectorView() {
             setTextureError(err instanceof Error ? err.message : String(err));
         }
     };
-
-    if (!selectedTexture) {
-        return (
-            <Box sx={{p: 2}}>
-                <Typography variant="body2" color="text.secondary">
-                    Select or add a texture to see its details.
-                </Typography>
-            </Box>
-        );
-    }
 
     return (
         <Stack sx={{pb: 1}}>

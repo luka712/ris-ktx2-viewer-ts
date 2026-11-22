@@ -55,11 +55,13 @@ function Viewport() {
 /** md and up: Textures | viewport | Inspector, side panels collapsible. */
 function DesktopLayout() {
     const [panels, setPanels] = useState(loadPanels);
-    const toggle = (side: "left" | "right") => setPanels((current) => {
-        const next = {...current, [side]: !current[side]};
-        localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(next));
-        return next;
-    });
+    useEffect(() => {
+        localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(panels));
+    }, [panels]);
+    const toggle = (side: "left" | "right") => setPanels((current) => ({
+        ...current,
+        [side]: !current[side],
+    }));
 
     return (
         <Box sx={{flex: 1, minHeight: 0, display: "flex", gap: 1}}>

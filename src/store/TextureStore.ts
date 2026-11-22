@@ -16,7 +16,7 @@ import {
     rgba8Format,
 } from "../service/textureResources.ts";
 import {applyOutputColorSpace} from "../service/outputColorSpace.ts";
-import {useViewerStore} from "./viewerStore.ts";
+import {useViewerStore, waitForFrameworkAsync} from "./viewerStore.ts";
 import {makeUniqueName} from "../service/formatter.ts";
 
 /**
@@ -292,13 +292,14 @@ export const useTextureStore = create<TextureStore>((set, get) => {
         },
 
         addTextureFromFile: async (file) => {
-            const framework = requireFramework();
             if (isNameTaken(file.name)) {
                 throw new Error(`Texture already added: ${file.name}`);
             }
 
             pendingFileNames.add(file.name);
             try {
+                // Wait if the canvas is being recreated (backend switch, layout remount, first start).
+                const framework = await waitForFrameworkAsync();
                 const loaded = await loadTextureFromFileAsync(framework, file);
                 addContainer({id: createTextureId(), ...loaded});
             } finally {
