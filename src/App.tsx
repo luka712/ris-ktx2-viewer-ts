@@ -1,4 +1,4 @@
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import {Box, createTheme, Paper, Tab, Tabs, ThemeProvider, useMediaQuery} from "@mui/material";
 import './App.css'
 import {SidePanel} from "./views/SidePanel.tsx";
@@ -10,6 +10,8 @@ import {HeaderView} from "./views/HeaderView.tsx";
 import {FooterView} from "./views/FooterView.tsx";
 import {ErrorBoundary} from "./components/ErrorBoundary.tsx";
 import {ConvertNotifications} from "./components/ConvertNotifications.tsx";
+import {ViewerNotifications} from "./components/ViewerNotifications.tsx";
+import {useViewerStore} from "./store/viewerStore.ts";
 import Dropzone from "./components/Dropzone.tsx";
 
 /** Keys shared with the inline script in index.html that applies the scheme before first paint. */
@@ -106,6 +108,11 @@ function Layout() {
 
 /** Page: header, Textures | viewport | Inspector, one-line status bar. */
 function App() {
+    // WebGPU support decides whether the backend switch offers it.
+    useEffect(() => {
+        void useViewerStore.getState().probeWebGpuAsync();
+    }, []);
+
     return (
         <ThemeProvider
             theme={theme}
@@ -120,6 +127,7 @@ function App() {
                     <FooterView/>
                 </Box>
                 <ConvertNotifications/>
+                <ViewerNotifications/>
             </ErrorBoundary>
         </ThemeProvider>
     );
