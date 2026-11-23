@@ -13,8 +13,8 @@ import {
 } from "@mui/material";
 import FileCopyOutlinedIcon from "@mui/icons-material/FileCopyOutlined";
 import LayersOutlinedIcon from "@mui/icons-material/LayersOutlined";
-import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
-import {arraySourceProblem, convertibleSources} from "../service/textureArray.ts";
+import type {ITexture2DContainer} from "../../model/ITexture2DContainer.ts";
+import {arraySourceProblem, convertibleSources} from "../../service/textureArray.ts";
 
 /** How the Convert dialog converts: the selected texture, each selected image on its own, or all as one array. */
 export type ConvertMode = "single" | "separate" | "array";

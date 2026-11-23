@@ -1,9 +1,9 @@
 import {Paper, Typography} from "@mui/material";
-import {textureFormatToString} from "../service/mapper.ts";
-import {encodingLabel} from "../service/textureInfo.ts";
-import {useSelectedTexture} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
-import {backendName} from "../service/backendStorage.ts";
+import {textureFormatToString} from "../../service/mapper.ts";
+import {encodingLabel} from "../../service/textureInfo.ts";
+import {useSelectedTexture} from "../../store/TextureStore.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import {backendName} from "../../service/backendStorage.ts";
 
 /** One-line status bar: selected texture, size, KTX2 encoding and GPU format (details are in the Inspector). */
 export function FooterView() {

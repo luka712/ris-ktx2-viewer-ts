@@ -2,10 +2,10 @@ import {useState} from "react";
 import {Alert, Box, Divider, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography} from "@mui/material";
 import {ColorSpace, TextureFormat, TextureUtilities} from "ris-framework";
 import {VkFormat} from "ris-ktx2";
-import {SelectField, type SelectOption} from "../components/fields/SelectField.tsx";
-import {CheckboxField} from "../components/fields/CheckboxField.tsx";
-import {textureFormatToString} from "../service/mapper.ts";
-import {colorSpaceLabel, encodingLabel, NO_VALUE} from "../service/textureInfo.ts";
+import {SelectField, type SelectOption} from "../../components/ui/fields/SelectField.tsx";
+import {CheckboxField} from "../../components/ui/fields/CheckboxField.tsx";
+import {textureFormatToString} from "../../service/mapper.ts";
+import {colorSpaceLabel, encodingLabel, NO_VALUE} from "../../service/textureInfo.ts";
 import {
     arrayLayerCount,
     canGenerateMipmaps,
@@ -13,10 +13,10 @@ import {
     textureDetails,
     useSelectedTexture,
     useTextureStore,
-} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
-import {InfoRow, SectionTitle} from "../components/InfoSection.tsx";
-import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
+} from "../../store/TextureStore.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import {InfoRow, SectionTitle} from "../../components/ui/InfoSection.tsx";
+import type {ITexture2DContainer} from "../../model/ITexture2DContainer.ts";
 
 const FORMAT_TOOLTIP = "GPU texture format used to display this texture. _SRGB formats treat the data as sRGB color (decoded when sampled); the others (UNORM) as linear data, e.g. normal maps. Defaults to sRGB for images and to the file's own color space for KTX2. Compressed formats reduce memory usage, at the expense of quality.";
 const MIPMAPS_TOOLTIP = "Generates mipmaps on the GPU at display time (they are not stored in the file). Smaller versions of the texture improve quality and reduce sampling artifacts when it is shown at reduced sizes.";

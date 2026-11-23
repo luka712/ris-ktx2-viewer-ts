@@ -1,5 +1,5 @@
 import {Alert, Snackbar, type SnackbarCloseReason} from "@mui/material";
-import {useViewerStore} from "../store/viewerStore.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
 
 const INFO_AUTO_HIDE_MS = 6000;
 

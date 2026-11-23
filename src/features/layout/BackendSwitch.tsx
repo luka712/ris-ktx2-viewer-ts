@@ -1,8 +1,8 @@
 import {Box, ListItemIcon, ListItemText, ListSubheader, MenuItem, ToggleButton, ToggleButtonGroup, Tooltip} from "@mui/material";
 import CheckIcon from "@mui/icons-material/Check";
 import {GpuBackend} from "ris-framework";
-import {useViewerStore} from "../store/viewerStore.ts";
-import {backendName, type ViewerBackend} from "../service/backendStorage.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import {backendName, type ViewerBackend} from "../../service/backendStorage.ts";
 
 const BACKENDS: ViewerBackend[] = [GpuBackend.WEB_GL, GpuBackend.WEB_GPU];
 

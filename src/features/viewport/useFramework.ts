@@ -17,12 +17,12 @@ import {
 } from "ris-framework";
 import type {IKtx2FactoryInitializeParams} from "ris-ktx2";
 import {vec2, vec3} from "gl-matrix";
-import {View2D, View3D} from "../model/View.ts";
-import {isTextureArray} from "../model/ITexture2DContainer.ts";
-import {selectSelectedTexture, useTextureStore} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
-import type {ViewerBackend} from "../service/backendStorage.ts";
-import {applyOutputColorSpace, outputColorSpaceFor} from "../service/outputColorSpace.ts";
+import {View2D, View3D} from "../../model/View.ts";
+import {isTextureArray} from "../../model/ITexture2DContainer.ts";
+import {selectSelectedTexture, useTextureStore} from "../../store/TextureStore.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import type {ViewerBackend} from "../../service/backendStorage.ts";
+import {applyOutputColorSpace, outputColorSpaceFor} from "../../service/outputColorSpace.ts";
 
 
 /**

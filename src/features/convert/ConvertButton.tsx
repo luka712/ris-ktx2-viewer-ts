@@ -1,12 +1,12 @@
 import {useState} from "react";
 import {Button, CircularProgress, IconButton, Tooltip} from "@mui/material";
 import TransformIcon from "@mui/icons-material/Transform";
-import ConvertDialog from "../dialogs/ConvertDialog.tsx";
-import ConvertModeDialog, {type ConvertMode} from "../dialogs/ConvertModeDialog.tsx";
-import {useSelectedTexture, useSelectedTextures} from "../store/TextureStore.ts";
-import {useConvertStore} from "../store/ConvertStore.ts";
-import {convertibleSources} from "../service/textureArray.ts";
-import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
+import ConvertDialog from "./ConvertDialog.tsx";
+import ConvertModeDialog, {type ConvertMode} from "./ConvertModeDialog.tsx";
+import {useSelectedTexture, useSelectedTextures} from "../../store/TextureStore.ts";
+import {useConvertStore} from "../../store/ConvertStore.ts";
+import {convertibleSources} from "../../service/textureArray.ts";
+import type {ITexture2DContainer} from "../../model/ITexture2DContainer.ts";
 
 /** What the Convert dialog instance was opened for. Captured on open, so a later selection change doesn't affect it. */
 interface ConvertJob {

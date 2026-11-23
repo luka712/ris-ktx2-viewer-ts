@@ -1,7 +1,7 @@
 import {useRef, useState, useTransition} from "react";
 import {Alert, Button, CircularProgress, IconButton, Snackbar, Tooltip} from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
-import {useTextureStore} from "../store/TextureStore.ts";
+import {useTextureStore} from "../../store/TextureStore.ts";
 
 const ACCEPT = ".ktx2,.png,.jpg,.jpeg,.webp";
 

@@ -23,13 +23,13 @@ import {
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import MemoryIcon from "@mui/icons-material/Memory";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutlineOutlined";
-import {ThemeModeSwitch} from "../components/ThemeModeSwitch.tsx";
-import {BackendMenuItems, BackendSwitch} from "../components/BackendSwitch.tsx";
-import AddFileButton from "../components/AddFileButton.tsx";
-import ConvertButton from "../components/ConvertButton.tsx";
-import AboutDialog from "../dialogs/AboutDialog.tsx";
-import {GpuInfoCopyButton, GpuPropertiesView} from "./GpuPropertiesView.tsx";
-import {useConvertStore} from "../store/ConvertStore.ts";
+import {ThemeModeSwitch} from "../../components/ui/ThemeModeSwitch.tsx";
+import {BackendMenuItems, BackendSwitch} from "./BackendSwitch.tsx";
+import AddFileButton from "../textures/AddFileButton.tsx";
+import ConvertButton from "../convert/ConvertButton.tsx";
+import AboutDialog from "./AboutDialog.tsx";
+import {GpuInfoCopyButton, GpuPropertiesView} from "../gpu-info/GpuPropertiesView.tsx";
+import {useConvertStore} from "../../store/ConvertStore.ts";
 
 /** Shows the running background conversion (the dialog may be closed); click opens the dialog. */
 function ConversionIndicator({compact}: { compact: boolean }) {

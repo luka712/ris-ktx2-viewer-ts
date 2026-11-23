@@ -1,6 +1,6 @@
 import {Alert, AlertTitle, Box} from "@mui/material";
-import {useFramework} from "../hooks/useFramework.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
+import {useFramework} from "./useFramework.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
 
 /** The render canvas, centred and scaled down (aspect kept) to fit its container. Owns the framework via useFramework. */
 export function ViewportView() {

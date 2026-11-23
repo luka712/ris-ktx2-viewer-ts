@@ -20,21 +20,21 @@ import {
 } from "@mui/material";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import {useConvertStore} from "../store/ConvertStore.ts";
-import {changeFileExtension} from "../service/formatter.ts";
-import {TextInputField} from "../components/fields/TextInputField.tsx";
-import {SelectField} from "../components/fields/SelectField.tsx";
-import {CheckboxField} from "../components/fields/CheckboxField.tsx";
-import {SliderField} from "../components/fields/SliderField.tsx";
-import {KTX2_FILE_EXTENSION} from "../model/FileExtensionConstants.ts";
-import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
-import {ConvertParameters} from "../model/ConvertParameters.ts";
-import {clearConvertOptions, loadConvertOptions, saveConvertOptions} from "../service/convertOptionsStorage.ts";
-import {useDismissedFlag} from "../hooks/useDismissedFlag.ts";
+import {useConvertStore} from "../../store/ConvertStore.ts";
+import {changeFileExtension} from "../../service/formatter.ts";
+import {TextInputField} from "../../components/ui/fields/TextInputField.tsx";
+import {SelectField} from "../../components/ui/fields/SelectField.tsx";
+import {CheckboxField} from "../../components/ui/fields/CheckboxField.tsx";
+import {SliderField} from "../../components/ui/fields/SliderField.tsx";
+import {KTX2_FILE_EXTENSION} from "../../model/FileExtensionConstants.ts";
+import type {ITexture2DContainer} from "../../model/ITexture2DContainer.ts";
+import {ConvertParameters} from "../../model/ConvertParameters.ts";
+import {clearConvertOptions, loadConvertOptions, saveConvertOptions} from "../../service/convertOptionsStorage.ts";
+import {useDismissedFlag} from "../../hooks/useDismissedFlag.ts";
 import type {ConvertMode} from "./ConvertModeDialog.tsx";
-import {arrayFileName, arraySourceProblem, moveItem} from "../service/textureArray.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
-import {arrayLayerLimitProblem, maxTextureArrayLayers} from "../service/textureResources.ts";
+import {arrayFileName, arraySourceProblem, moveItem} from "../../service/textureArray.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import {arrayLayerLimitProblem, maxTextureArrayLayers} from "../../service/textureResources.ts";
 import {
     ASTC_BLOCK_SIZE_OPTIONS,
     ASTC_BLOCK_SIZE_TOOLTIP,
@@ -43,18 +43,18 @@ import {
     ASTC_NORMAL_MAP_TOOLTIP,
     ASTC_QUALITY_OPTIONS,
     ASTC_QUALITY_TOOLTIP,
-} from "../model/AstcConstants.ts";
+} from "../../model/AstcConstants.ts";
 import {
     KTX_ENCODING_ASTC,
     KTX_ENCODING_BASIS_UNIVERSAL_ETC1S,
     KTX_ENCODING_BASIS_UNIVERSAL_UASTC,
-} from "../model/Ktx2EncodingConstants.ts";
+} from "../../model/Ktx2EncodingConstants.ts";
 import {
     KTX_COMPRESSION_NONE,
     KTX_COMPRESSION_ZLIB,
     KTX_COMPRESSION_ZSTANDARD
-} from "../model/Ktx2CompressionConstants.ts";
-import {RDO_QUALITY_OPTIONS} from "../model/RDOCompressionConstants.ts";
+} from "../../model/Ktx2CompressionConstants.ts";
+import {RDO_QUALITY_OPTIONS} from "../../model/RDOCompressionConstants.ts";
 import {
     BLOCK_ALIGN_TOOLTIP,
     COMPRESSION_LEVEL_ZLIB_TOOLTIP,
@@ -75,7 +75,7 @@ import {
     RDO_QUALITY_TOOLTIP,
     RDO_VALUE_TOOLTIPS,
     UASTC_QUALITY_TOOLTIP,
-} from "../model/ConvertOptionsConstants.ts";
+} from "../../model/ConvertOptionsConstants.ts";
 
 const SLOW_WARNING_STORAGE_KEY = "ris-ktx2-viewer.convertSlowWarningDismissed";
 const CANNOT_CANCEL_TOOLTIP = "This conversion is running on the main thread and can't be cancelled.";

@@ -1,6 +1,6 @@
 - src/store/TextureStore.ts: The GPU texture is disposed on remove; the source image and KTX2 container are not.
 - package.json: ris-framework `^0.4.0` and ris-ktx2 `^0.3.0` from the npm registry (single, deduped ris-ktx2).
-- package.json: gl-matrix is imported directly (src/hooks/useFramework.ts, src/service/Ktx2Converter.ts) but not declared; it resolves only because npm hoists it as a ris-framework dependency. Add it as a direct dependency (same range as ris-framework, ^3.4.4).
+- package.json: gl-matrix is imported directly (src/features/viewport/useFramework.ts, src/service/Ktx2Converter.ts) but not declared; it resolves only because npm hoists it as a ris-framework dependency. Add it as a direct dependency (same range as ris-framework, ^3.4.4).
 - src/service/Ktx2Converter.ts: One worker per conversion reloads the libktx WASM each time. Consider a warm, reusable worker (pre-started when the Convert dialog opens; terminated after large jobs or when idle).
 - src/service/Ktx2Converter.ts: Preparing the source (block-align resize, mip generation, reading pixels back via getBytesFromHtmlImage) still runs on the main thread; only the encode is in the worker. See the OffscreenCanvas step in docs/todo-worker-encoding.md.
 - src/service/Ktx2Converter.ts: The main-thread fallback (worker unavailable) cannot be cancelled or interrupted mid-encode; the Cancel conversion button is disabled while it runs.
@@ -50,7 +50,7 @@
 ## GPU info (header Info menu → GPU info)
 
 - Format families are the framework's extension flags refined with `supportsTextureFormat` per format / sRGB variant. BC6H has no `TextureFormat` yet, so the BC6H/BC7 card counts BC7 only.
-- src/components/PropertyList.tsx (and fields/TextBlockField.tsx) are no longer used after the GPU info redesign; remove them or reuse.
+- src/components/ui/PropertyList.tsx (and ui/fields/TextBlockField.tsx) are no longer used after the GPU info redesign; remove them or reuse.
 
 ## Rendering backends (header WebGL2 | WebGPU switch)
 

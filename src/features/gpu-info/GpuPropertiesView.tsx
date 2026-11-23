@@ -4,9 +4,9 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DoneIcon from "@mui/icons-material/Done";
-import {useViewerStore} from "../store/viewerStore.ts";
-import {InfoRow, SectionTitle} from "../components/InfoSection.tsx";
-import {type FormatFamilySupport, formatGpuSummary, readGpuSummary} from "../service/gpuInfo.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
+import {InfoRow, SectionTitle} from "../../components/ui/InfoSection.tsx";
+import {type FormatFamilySupport, formatGpuSummary, readGpuSummary} from "../../service/gpuInfo.ts";
 
 async function copyText(text: string) {
     if (navigator.clipboard?.writeText) {

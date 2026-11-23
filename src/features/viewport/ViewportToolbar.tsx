@@ -2,9 +2,9 @@ import {Box, IconButton, MenuItem, Paper, Select, ToggleButton, ToggleButtonGrou
 import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
 import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import {SamplerFilter} from "ris-framework";
-import {View2D, View3D} from "../model/View.ts";
-import {arrayLayerCount, textureDetails, useSelectedTexture, useTextureStore} from "../store/TextureStore.ts";
-import {useViewerStore} from "../store/viewerStore.ts";
+import {View2D, View3D} from "../../model/View.ts";
+import {arrayLayerCount, textureDetails, useSelectedTexture, useTextureStore} from "../../store/TextureStore.ts";
+import {useViewerStore} from "../../store/viewerStore.ts";
 
 // TODO: Fit / 1:1 / zoom controls. The 2D view fits the canvas to the texture (useFramework) and the
 // framework exposes only an orbit camera for 3D, so there is no 2D zoom/pan API to bind yet.

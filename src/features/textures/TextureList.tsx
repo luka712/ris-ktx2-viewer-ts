@@ -11,9 +11,9 @@ import {
     Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
-import {arrayLayerCount, formatFileSize, useTextureStore} from "../store/TextureStore.ts";
-import {encodingLabel} from "../service/textureInfo.ts";
-import type {ITexture2DContainer} from "../model/ITexture2DContainer.ts";
+import {arrayLayerCount, formatFileSize, useTextureStore} from "../../store/TextureStore.ts";
+import {encodingLabel} from "../../service/textureInfo.ts";
+import type {ITexture2DContainer} from "../../model/ITexture2DContainer.ts";
 
 /** "768×512 · BC7_UNORM_BLOCK · 1.20 MiB" */
 function secondaryLine(item: ITexture2DContainer): string {
